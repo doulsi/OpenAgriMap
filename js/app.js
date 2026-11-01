@@ -442,7 +442,23 @@ document.addEventListener("DOMContentLoaded", () => {
     if (toggle && !toggle.checked) return;
 
     if (window.SOIL_WATER_STATIONS) {
-      SOIL_WATER_STATIONS.forEach(station => {
+      const stations = SOIL_WATER_STATIONS;
+      // enrich with live Open-Meteo soil data per station (best effort, parallel, capped)
+      Promise.all(stations.slice(0, 12).map(st =>
+        Services.fetchLiveSoilWaterStatus(st.lat, st.lng)
+          .then(live => { if (live) { st.surfaceMoisture = live.surfaceMoisturePct ?? st.surfaceMoisture; st.rootMoisture = live.rootMoisturePct ?? st.rootMoisture; st.soilTemp = live.soilTemp ?? st.soilTemp; st.statusLabel = (live.statusLabel || st.statusLabel) + " (live)"; } })
+          .catch(() => {})
+      )).then(() => { if (document.getElementById("toggleWaterLayer").checked) drawWaterStations(stations); });
+      drawWaterStations(stations);
+      return;
+    }
+  }
+
+  function drawWaterStations(stations) {
+    waterLayerGroup.clearLayers();
+    {
+      {
+        stations.forEach(station => {
         let badgeColor = "#10b981";
         if (station.status === "drought") badgeColor = "#ef4444";
         else if (station.status === "deficit") badgeColor = "#f59e0b";
@@ -484,6 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         waterLayerGroup.addLayer(marker);
       });
+      }
     }
   }
 
