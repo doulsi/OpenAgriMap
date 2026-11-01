@@ -281,6 +281,16 @@ test("apicarto passthrough is routed and cached (no network: unknown upstream is
   assert.ok(PROXY_TARGETS.apicarto.includes("apicarto.ign.fr"));
 });
 
+test("RPG parcels endpoint: 422 without bbox; 200 shape check against a stubbed upstream", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const bad = await fetch(`${base}/api/rpg/parcels`);
+  assert.equal(bad.status, 422);
+  const bad2 = await fetch(`${base}/api/rpg/parcels?bbox=a,b,c,d`);
+  assert.equal(bad2.status, 422);
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
