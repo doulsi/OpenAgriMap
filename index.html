@@ -462,6 +462,11 @@
               <option value="advisor">Conseiller de Chambre d'Agriculture / Technicien</option>
             </select>
           </div>
+
+          <div class="form-group flex-1">
+            <label for="reportDisplayName">Nom d'affichage public *</label>
+            <input type="text" id="reportDisplayName" placeholder="Ex: Jean-Paul D. (les signalements anonymes sont refusés)" required minlength="1" maxlength="80" />
+          </div>
         </div>
 
         <div class="form-row">
@@ -679,6 +684,7 @@
   <script src="js/mock-parcels.js"></script>
   <script src="js/services.js"></script>
   <script src="js/outbreak-engine.js"></script>
+  <script src="js/api-client.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

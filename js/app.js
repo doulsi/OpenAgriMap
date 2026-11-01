@@ -776,7 +776,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Form Submission
-  document.getElementById("outbreakReportForm").addEventListener("submit", (e) => {
+  document.getElementById("outbreakReportForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const disease = document.getElementById("reportDiseaseType").value;
     const severity = document.getElementById("reportSeverity").value;
@@ -784,14 +784,46 @@ document.addEventListener("DOMContentLoaded", () => {
     const lat = document.getElementById("reportLatitude").value;
     const lng = document.getElementById("reportLongitude").value;
     const reporterRole = document.getElementById("reportUserRole").value;
+    const reporterName = document.getElementById("reportDisplayName").value.trim();
     const notes = document.getElementById("reportNotes").value;
 
+    if (!reporterName) {
+      showToast("Un nom d'affichage est requis : les signalements anonymes sont refusés.", "error");
+      return;
+    }
+
+    const observation = {
+      bioaggressor: disease,
+      severity,
+      crop,
+      location: { lat: parseFloat(lat), lng: parseFloat(lng) },
+      observedAt: new Date().toISOString(),
+      notes,
+      reporter: { role: reporterRole, displayName: reporterName }
+    };
+
+    let persisted = false;
+    try {
+      const saved = await ApiClient.submitReport(observation);
+      persisted = true;
+      observation.id = saved.id;
+    } catch (err) {
+      if (err.status === 422) {
+        const detail = (err.details || []).join(" ; ");
+        showToast(`Signalement refusé par le schéma d'observation : ${detail}`, "error");
+        return;
+      }
+      console.warn("API unreachable, keeping report locally (mock mode):", err.message);
+    }
+
     const newReport = outbreakEngine.addReport({
+      id: observation.id,
       disease,
       severity,
       crop,
       lat,
       lng,
+      reporter: reporterName,
       reporterRole,
       notes
     });
@@ -801,7 +833,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Fly smoothly to new report and open popup
     map.flyTo([lat, lng], 13);
-    showToast(`Signalement enregistré avec succès dans l'Open Data agricole ! Alerte de proximité actualisée.`, "success");
+    showToast(persisted
+      ? `Signalement enregistré avec succès dans l'Open Data agricole ! Alerte de proximité actualisée.`
+      : `Signalement enregistré localement (mode hors ligne) : l'API n'est pas joignable.`, persisted ? "success" : "info");
   });
 
   // 10. TOAST NOTIFICATION HELPER

@@ -34,6 +34,41 @@ Plateforme cartographique collaborative et ouverte dédiée au monde agricole et
 
 ---
 
+## ▶️ Lancer l'application
+
+**Mode rapide (statique)** : ouvrez `index.html` dans un navigateur — l'app
+fonctionne hors ligne avec les données d'amorçage, et les nouveaux signalements
+restent locaux.
+
+**Mode complet (avec API)** — Node >= 18, aucune dépendance à installer :
+
+```bash
+npm start          # sert l'API + le frontend sur http://127.0.0.1:8080
+npm test           # tests de l'API (node --test)
+```
+
+L'API (`server/server.js`, zéro dépendance) expose :
+
+- `GET /api/reports` — liste des signalements (filtre `?bbox=minLng,minLat,maxLng,maxLat`)
+- `POST /api/reports` — enregistre un signalement validé contre
+  [`schema/observation.schema.json`](schema/observation.schema.json)
+  (culture, variété, bioagresseur, stade, notes, GPS, date, nom d'affichage ;
+  **les signalements anonymes sont refusés** — 422)
+- `GET /api/proxy/:source/*` — proxy de cache serveur pour les appels aux API
+  tierces (ISRIC SoilGrids, Open-Meteo), afin de ne pas exposer le navigateur
+  aux limites de débit
+
+La persistance par défaut est un fichier JSON (`data/reports.json`, gitignoré),
+en attendant PostgreSQL/PostGIS + comptes utilisateurs (voir [ROADMAP.md](ROADMAP.md)).
+
+## 🤝 Contribuer
+
+Le projet est ouvert aux contributions : voir [CONTRIBUTING.md](CONTRIBUTING.md).
+Code sous licence **MIT**, données contribuées sous **ODbL** (voir [LICENSE](LICENSE)).
+La feuille de route produit est dans [ROADMAP.md](ROADMAP.md).
+
+---
+
 ## 📂 Structure du Projet
 
 ```text
@@ -45,7 +80,17 @@ Plateforme cartographique collaborative et ouverte dédiée au monde agricole et
 │   ├── data-sources.js      # Annuaire des sources Open Data & métadonnées
 │   ├── services.js          # Clients API (ISRIC SoilGrids, IGN Géocodage)
 │   ├── outbreak-engine.js   # Moteur spatial de calcul de proximité (Turf.js)
-│   └── mock-parcels.js      # Jeux de données d'amorçage géoréférencés
+│   ├── mock-parcels.js      # Jeux de données d'amorçage géoréférencés
+│   └── api-client.js        # Client de l'API backend (fallback local hors ligne)
+├── schema/
+│   └── observation.schema.json  # Schéma standardisé des signalements
+├── server/
+│   ├── server.js            # API HTTP zéro dépendance (Node >= 18)
+│   ├── store.js             # Persistance des signalements (JSON -> PostGIS)
+│   ├── validator.js         # Validateur du schéma d'observation
+│   └── server.test.js       # Tests (node --test)
+├── CONTRIBUTING.md          # Guide de contribution
+├── ROADMAP.md               # Feuille de route produit
 └── README.md                # Documentation générale
 ```
 
