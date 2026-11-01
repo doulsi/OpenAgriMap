@@ -26,6 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const outbreakEngine = new OutbreakEngine([]);
 
   // Load community reports from the API for the current viewport (debounced on move).
+  // NOTE: `map` is only declared further below — the moveend subscription is wired
+  // after map init (calling map.on here would hit the TDZ and kill the whole init).
   let reportsDebounce = null;
   async function loadReportsFromApi() {
     try {
@@ -34,20 +36,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(`/api/reports?bbox=${bbox}`);
       if (!res.ok) throw new Error("api");
       const data = await res.json();
-      outbreakEngine.reports = (data.reports || []).map(r => ({
-        id: r.id, disease: r.bioaggressor, severity: r.severity, crop: r.crop,
+      const apiReports = (data.reports || []).map(r => ({
+        id: r.id, disease: r.bioaggressor,
+        diseaseName: outbreakEngine.getDiseaseDisplayName(r.bioaggressor), // needed by popups + feed
+        severity: r.severity, crop: r.crop,
         reporter: r.reporter.displayName, reporterRole: r.reporter.role,
         lat: r.location.lat, lng: r.location.lng,
         date: new Date(r.observedAt).toLocaleString("fr-FR"),
         notes: r.notes || "", status: r.status
       }));
+      // Merge instead of replace: keep locally submitted reports the API does not
+      // (yet) return, so offline submissions survive a viewport reload.
+      const apiIds = new Set(apiReports.map(r => r.id));
+      const localOnly = outbreakEngine.reports.filter(r => !apiIds.has(r.id));
+      outbreakEngine.reports = [...apiReports, ...localOnly];
       outbreakEngine.notify();
     } catch { /* offline: keep local reports */ }
   }
-  map.on("moveend", () => {
-    clearTimeout(reportsDebounce);
-    reportsDebounce = setTimeout(loadReportsFromApi, 500);
-  });
 
   // 1. INITIALIZE LEAFLET MAP
   const map = L.map("map", {
@@ -132,6 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // LAYER 2: Biodiversity Occurrences (Seeded Baseline + LIVE GBIF REST API)
   let gbifDebounce = null;
+  let gbifSeq = 0; // sequence guard: drop live responses that arrive after a newer render
   async function renderBiodiversityLayer() {
     bioLayerGroup.clearLayers();
     if (!document.getElementById("toggleBioLayer").checked) return;
@@ -185,10 +191,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 2. Fetch LIVE occurrences from GBIF API for current viewport bounds
     clearTimeout(gbifDebounce);
+    const seq = ++gbifSeq;
     gbifDebounce = setTimeout(async () => {
       const bounds = map.getBounds();
       const countryCode = state.selectedCountry || "FR";
       const liveRecords = await Services.fetchLiveGBIFOccurrences(bounds, state.bioFilter, countryCode);
+      if (seq !== gbifSeq) return; // a newer render already cleared the layer: drop stale markers
       liveRecords.forEach(pt => addBioMarker(pt));
     }, 350);
   }
@@ -466,11 +474,22 @@ document.addEventListener("DOMContentLoaded", () => {
     if (toggle && !toggle.checked) return;
 
     if (window.SOIL_WATER_STATIONS) {
-      const stations = SOIL_WATER_STATIONS;
+      // Work on a copy: live enrichment must not mutate the shared seed data
+      // (statusLabel used to accumulate " (live)" on every render).
+      const stations = SOIL_WATER_STATIONS.map(st => ({ ...st }));
       // enrich with live Open-Meteo soil data per station (best effort, parallel, capped)
       Promise.all(stations.slice(0, 12).map(st =>
         Services.fetchLiveSoilWaterStatus(st.lat, st.lng)
-          .then(live => { if (live) { st.surfaceMoisture = live.surfaceMoisturePct ?? st.surfaceMoisture; st.rootMoisture = live.rootMoisturePct ?? st.rootMoisture; st.soilTemp = live.soilTemp ?? st.soilTemp; st.statusLabel = (live.statusLabel || st.statusLabel) + " (live)"; } })
+          .then(live => {
+            if (live && live.available) {
+              st.surfaceMoisture = live.surfaceMoisturePct ?? st.surfaceMoisture;
+              st.rootMoisture = live.rootMoisturePct ?? st.rootMoisture;
+              st.soilTemp = live.soilTemp ?? st.soilTemp;
+              st.status = live.statusCode || st.status; // badge color follows the live status
+              st.statusLabel = live.statusLabel || st.statusLabel;
+              st.isLive = true;
+            }
+          })
           .catch(() => {})
       )).then(() => { if (document.getElementById("toggleWaterLayer").checked) drawWaterStations(stations); });
       drawWaterStations(stations);
@@ -504,7 +523,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
             <h4>${station.name}</h4>
             <div style="margin: 6px 0; font-size: 0.8rem; font-weight:700; color:${badgeColor};">
-              ● ${station.statusLabel}
+              ● ${station.statusLabel}${station.isLive ? " (live)" : ""}
             </div>
             <div class="popup-metrics" style="grid-template-columns: 1fr 1fr; gap:6px; margin: 8px 0;">
               <div style="background:rgba(15,23,42,0.6); padding:6px 8px; border-radius:4px;">
@@ -921,6 +940,9 @@ document.addEventListener("DOMContentLoaded", () => {
         renderBiodiversityLayer();
       }
     }, 350);
+    // Reload community vigilance reports for the new viewport (debounced separately)
+    clearTimeout(reportsDebounce);
+    reportsDebounce = setTimeout(loadReportsFromApi, 500);
   });
 
   // 7. RADIUS SLIDER EVENT
