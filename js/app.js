@@ -182,6 +182,54 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // LAYER 3: Crop Parcels (RPG style)
   // Plan §3.5 use case 1: fiche d'identité de parcelle (side panel)
+  // Fiche for a LIVE RPG parcelle (id not in the local store): identity from ApiCarto props,
+  // real multi-year history from /api/rpg/history at the parcel center.
+  async function openLiveParcelSheet(parcelId, liveParcel, sheet) {
+    const pr = liveParcel.props || {};
+    const lat = liveParcel.lat, lng = liveParcel.lng;
+    sheet.innerHTML = `<div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div><p>Chargement…</p>`;
+    sheet.style.display = "block";
+    if (window.lucide) lucide.createIcons();
+    document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+    let historyRows = "";
+    try {
+      const hist = await (await fetch(`/api/rpg/history?lat=${lat}&lng=${lng}`)).json();
+      historyRows = (hist.years || []).map(y => `<tr><td><strong>${y.year}</strong></td><td>${cultureLabel(y.code_cultu)}</td><td>${y.surf_parc != null ? y.surf_parc + " ha" : ""}</td></tr>`).join("")
+        || `<tr><td colspan="3">Aucune donnée RPG pour ce point sur ces millésimes.</td></tr>`;
+    } catch { historyRows = `<tr><td colspan="3">Historique indisponible (hors ligne).</td></tr>`; }
+    sheet.innerHTML = `
+      <div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div>
+      <div class="alert-banner-card">
+        <h2 class="alert-headline" style="font-size:1.1rem">Parcelle RPG ${parcelId}</h2>
+        <p class="alert-description">Exploitation (RPG) • ${pr.surf_parc != null ? pr.surf_parc + " ha" : "—"}</p>
+        <p class="alert-description"><strong>Culture en cours :</strong> <em title="Code RPG ${pr.code_cultu || "?"}">${cultureLabel(pr.code_cultu)}</em> <span class="badge-sev-low">${pr.code_cultu || "?"}</span></p>
+        <p class="alert-description"><strong>Prix de référence du fermage :</strong> donnée non disponible (source à brancher, plan §3.2 item 2)</p>
+      </div>
+      <section class="layers-manager-section">
+        <div class="section-title-row"><h3>Historique d'assolement (RPG 2020–2024)</h3></div>
+        <table class="popup-history-table"><thead><tr><th>Année</th><th>Culture</th><th>Surf.</th></tr></thead><tbody>${historyRows}</tbody></table>
+        <p class="alert-description" style="margin-top:8px;font-size:0.75rem">Source : IGN/ASP — RPG millésimes 2020–2024 (Licence Ouverte 2.0), via ApiCarto</p>
+      </section>
+      <section class="layers-manager-section" id="neighborhoodSection"><div class="section-title-row"><h3>Voisinage à risque (10 km)</h3></div><p>Chargement…</p></section>
+      <section class="layers-manager-section" id="benchmarkSection"><div class="section-title-row"><h3>Benchmark de territoire (10 km)</h3></div><p>Chargement…</p></section>`;
+    if (window.lucide) lucide.createIcons();
+    document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+    try {
+      const nb = await (await fetch(`/api/neighborhood?lat=${lat}&lng=${lng}&radiusKm=10`)).json();
+      document.getElementById("neighborhoodSection").innerHTML = `
+        <div class="section-title-row"><h3>Voisinage à risque (10 km)</h3></div>
+        ${nb.alert ? `<p class="alert-description" style="color:#ef4444"><strong>⚠ ${nb.alert}</strong></p>` : ""}
+        <p class="alert-description">${nb.sprayRiskCount} foyer(s) de pulvérisation à risque, ${nb.activeReportsNearby} signalement(s) au total, ${nb.apiariesWithin3km.length} rucher(s) à < 3 km, ${nb.livestockNearby.length} élevage(s) à < 10 km.</p>`;
+    } catch { /* offline */ }
+    try {
+      const bm = await (await fetch(`/api/benchmark?lat=${lat}&lng=${lng}&radiusKm=10`)).json();
+      const aggr = Object.entries(bm.pressureByAggressor).map(([k, v]) => `<span class="stat-pill"><span class="stat-num">${v}</span> <span class="stat-label">${k}</span></span>`).join(" ");
+      document.getElementById("benchmarkSection").innerHTML = `
+        <div class="section-title-row"><h3>Benchmark de territoire (10 km)</h3></div>
+        <div class="alert-stats-strip">${aggr || '<span class="stat-pill"><span class="stat-label">aucun signalement</span></span>'}</div>`;
+    } catch { /* offline */ }
+  }
+
   async function openParcelSheet(parcelId, liveParcel = null) {
     let sheet = document.getElementById("parcelSheet");
     if (!sheet) {
@@ -198,7 +246,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const res = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}`);
-      if (!res.ok) throw new Error("API");
+      if (!res.ok) {
+        // live RPG id not in the server store: build the fiche straight from ApiCarto props + live history
+        if (liveParcel) { openLiveParcelSheet(parcelId, liveParcel, sheet); return; }
+        throw new Error("API");
+      }
       const p = await res.json();
       let historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
       // live parcel (ilot id, no mock history): fetch real RPG multi-year history at the parcel center
