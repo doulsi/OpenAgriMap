@@ -19,7 +19,9 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 - [x] Refus des signalements anonymes (validation schéma, 422)
 - [x] Licences : code MIT, données ODbL ; `CONTRIBUTING.md`
 - [x] **P6** : API publique documentée (OpenAPI 3, `/api/openapi.json`) + export GeoJSON ODbL (`/api/export.geojson`)
-- [ ] Comptes utilisateurs (email/OAuth) et persistance PostGIS — **P1 bloquant**
+- [x] **P7 (doc)** : `docs/COMPLIANCE.md` — RGPD, licences, RPG/ASP, gouvernance. Reste : revue juriste (humain)
+- [x] **P1 (v1)** : comptes email+mot de passe (scrypt, jetons de session 30 j), `POST /api/auth/register|login|logout`, `GET /api/me`, signalements liés au compte (`userId`) — persistance JSON
+- [ ] Persistance PostgreSQL/PostGIS (`server/schema.sql` prêt) + OAuth — **P1 (suite, nécessite une BDD)**
 - [x] Modération (PATCH statut), dédoublonnage 24h/250m (409), réputation par contributeur — **P2 (v1)**
 - [ ] Réseau de référents agronomes (validation humaine), score de réputation avancé — **P2 (suite)**
 - [x] **P4** : PWA installable (manifest + service worker, cache app shell, réseau d'abord pour l'API), géolocalisation GPS du terrain, champ photo — v1
