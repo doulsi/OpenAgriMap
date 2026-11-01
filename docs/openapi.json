@@ -218,6 +218,84 @@
           }
         }
       }
+    },
+    "/api/neighborhood": {
+      "get": {
+        "summary": "§3.2-3 Voisinage à risque : foyers de pulvérisation, ruchers < 3 km, élevages proches",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "radiusKm",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Synthèse voisinage"
+          },
+          "422": {
+            "description": "lat/lng requis"
+          }
+        }
+      }
+    },
+    "/api/benchmark": {
+      "get": {
+        "summary": "§3.2-4 Benchmark de territoire : pression par bioagresseur/culture et rendements dans le rayon",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "radiusKm",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark"
+          },
+          "422": {
+            "description": "lat/lng requis"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -30,6 +30,19 @@ function seedParcels() {
   }));
 }
 
+function seedApiariesAndLivestock() {
+  return {
+    apiaries: [
+      { id: "rucher-1", name: "Rucher du Val de Loire", lat: 47.252, lng: -0.02, hives: 24, owner: "Apiculteur adhérent" },
+      { id: "rucher-2", name: "Rucher des Coteaux", lat: 47.31, lng: 0.05, hives: 12, owner: "Apiculteur adhérent" }
+    ],
+    livestock: [
+      { id: "elevage-1", name: "Élevage bovin — GAEC de la Vallée", lat: 47.29, lng: 0.02, heads: 85, type: "bovin lait" },
+      { id: "elevage-2", name: "Élevage porcin plein air", lat: 47.42, lng: -0.12, heads: 120, type: "porcin" }
+    ]
+  };
+}
+
 function seedReports() {
   const seedFile = path.join(__dirname, "..", "js", "mock-parcels.js");
   const src = fs.readFileSync(seedFile, "utf8");
@@ -55,11 +68,17 @@ class ReportStore {
       this.users = Array.isArray(data) ? [] : (data.users || []);
       this.sessions = Array.isArray(data) ? [] : (data.sessions || []);
       this.parcels = Array.isArray(data) ? seedParcels() : (data.parcels || seedParcels());
+      const al = Array.isArray(data) ? seedApiariesAndLivestock() : (data.apiaries ? data : seedApiariesAndLivestock());
+      this.apiaries = al.apiaries || [];
+      this.livestock = al.livestock || [];
     } catch (err) {
       this.reports = seedReports().map((r) => this.normalizeSeed(r));
       this.users = [];
       this.sessions = [];
       this.parcels = seedParcels();
+      const al = seedApiariesAndLivestock();
+      this.apiaries = al.apiaries;
+      this.livestock = al.livestock;
       this.persist();
     }
     this.nextId = this.reports.reduce((max, r) => {
@@ -85,7 +104,7 @@ class ReportStore {
   persist() {
     fs.mkdirSync(path.dirname(this.dataFile), { recursive: true });
     const tmp = this.dataFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify({ reports: this.reports, users: this.users || [], sessions: this.sessions || [], parcels: this.parcels || [] }, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify({ reports: this.reports, users: this.users || [], sessions: this.sessions || [], parcels: this.parcels || [], apiaries: this.apiaries || [], livestock: this.livestock || [] }, null, 2));
     fs.renameSync(tmp, this.dataFile);
   }
 

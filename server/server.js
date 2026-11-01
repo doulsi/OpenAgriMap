@@ -21,6 +21,7 @@ const { validateObservation, loadSchema } = require("./validator");
 const { ReportStore } = require("./store");
 const { levelFor } = require("./gamification");
 const { AuthService } = require("./auth");
+const { neighborhoodRisk, territoryBenchmark } = require("./neighborhood");
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -105,6 +106,24 @@ function createServer({ store, schema } = {}) {
           referenceLeasePriceEURperHa: null, // §3.2 item 2: branché quand la source prix de fermage sera ouverte
           source: "RPG IGN/ASP (Licence Ouverte 2.0) + signalements communautaires ODbL"
         });
+      }
+
+      // Plan §3.2 item 3: voisinage à risque (pulvérisation / apiculture / élevage)
+      if (pathname === "/api/neighborhood" && req.method === "GET") {
+        const lat = parseFloat(url.searchParams.get("lat"));
+        const lng = parseFloat(url.searchParams.get("lng"));
+        const radiusKm = parseFloat(url.searchParams.get("radiusKm")) || 10;
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return sendJson(res, 422, { error: "lat & lng required" });
+        return sendJson(res, 200, neighborhoodRisk(lat, lng, reportStore.list(), reportStore.apiaries, reportStore.livestock, radiusKm));
+      }
+
+      // Plan §3.2 item 4: benchmark de territoire (pression sanitaire + rendements à moins de R km)
+      if (pathname === "/api/benchmark" && req.method === "GET") {
+        const lat = parseFloat(url.searchParams.get("lat"));
+        const lng = parseFloat(url.searchParams.get("lng"));
+        const radiusKm = parseFloat(url.searchParams.get("radiusKm")) || 10;
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return sendJson(res, 422, { error: "lat & lng required" });
+        return sendJson(res, 200, territoryBenchmark(lat, lng, reportStore.list(), reportStore.parcels, radiusKm));
       }
 
       // P1 accounts

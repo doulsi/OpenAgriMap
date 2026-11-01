@@ -32,8 +32,8 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 
 - [x] **Cas d'usage 1 — fiche d'identité de parcelle** : `GET /api/parcels/:id` (assolement, culture en cours, signalements contenus dans le polygone) + panneau latéral au clic sur la parcelle
 - [ ] Prix réels du foncier/fermage géolocalisés (§3.2 item 2) — **nécessite une source ouverte ; décision à prendre**
-- [ ] Voisinage à risque (éleveurs/apiculteurs < 3 km) (§3.2 item 3)
-- [ ] Benchmark de territoire (rendements/coûts à 10 km) (§3.2 item 4)
+- [x] **Voisinage à risque** (§3.2 item 3) : `GET /api/neighborhood?lat&lng&radiusKm` — foyers de pulvérisation, ruchers < 3 km, élevages proches, alerte si rucher exposé
+- [x] **Benchmark de territoire** (§3.2 item 4) : `GET /api/benchmark?lat&lng&radiusKm` — pression par bioagresseur/culture + rendements des parcelles dans le rayon
 
 ## KPIs
 
