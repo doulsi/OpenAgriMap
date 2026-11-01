@@ -217,9 +217,35 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="section-title-row"><h3>Signalements sur la parcelle (${(p.recentReports || []).length})</h3></div>
           <table class="popup-history-table"><thead><tr><th>Date</th><th>Bioagresseur</th><th>Sévérité</th><th>Observateur</th></tr></thead><tbody>${reportsRows}</tbody></table>
           <p class="alert-description" style="margin-top:8px;font-size:0.75rem">Source : ${p.source}</p>
-        </section>`;
+        </section>
+        <section class="layers-manager-section" id="neighborhoodSection"><div class="section-title-row"><h3>Voisinage à risque (10 km)</h3></div><p>Chargement…</p></section>
+        <section class="layers-manager-section" id="benchmarkSection"><div class="section-title-row"><h3>Benchmark de territoire (10 km)</h3></div><p>Chargement…</p></section>`;
       if (window.lucide) lucide.createIcons();
       document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+
+      // §3.2-3 voisinage à risque + §3.2-4 benchmark, around the parcel centroid
+      const ring = p.coords || [];
+      const cLat = ring.reduce((a, c) => a + c[0], 0) / (ring.length || 1);
+      const cLng = ring.reduce((a, c) => a + c[1], 0) / (ring.length || 1);
+      try {
+        const nb = await (await fetch(`/api/neighborhood?lat=${cLat}&lng=${cLng}&radiusKm=10`)).json();
+        const nbEl = document.getElementById("neighborhoodSection");
+        nbEl.innerHTML = `
+          <div class="section-title-row"><h3>Voisinage à risque (10 km)</h3></div>
+          ${nb.alert ? `<p class="alert-description" style="color:#ef4444"><strong>⚠ ${nb.alert}</strong></p>` : ""}
+          <p class="alert-description">${nb.sprayRiskCount} foyer(s) de pulvérisation à risque, ${nb.activeReportsNearby} signalement(s) au total, ${nb.apiariesWithin3km.length} rucher(s) à < 3 km, ${nb.livestockNearby.length} élevage(s) à < 10 km.</p>`;
+      } catch { /* offline */ }
+      try {
+        const bm = await (await fetch(`/api/benchmark?lat=${cLat}&lng=${cLng}&radiusKm=10`)).json();
+        const bmEl = document.getElementById("benchmarkSection");
+        const aggr = Object.entries(bm.pressureByAggressor).map(([k, v]) => `<span class="stat-pill"><span class="stat-num">${v}</span> <span class="stat-label">${k}</span></span>`).join(" ");
+        const yields = bm.yieldSamples.slice(0, 3).map(y => `<tr><td>${y.year}</td><td>${y.crop}</td><td>${y.value} ${y.unit}</td></tr>`).join("");
+        bmEl.innerHTML = `
+          <div class="section-title-row"><h3>Benchmark de territoire (10 km)</h3></div>
+          <div class="alert-stats-strip">${aggr || '<span class="stat-pill"><span class="stat-label">aucun signalement</span></span>'}</div>
+          ${yields ? `<table class="popup-history-table" style="margin-top:8px"><thead><tr><th>Année</th><th>Culture</th><th>Rendement</th></tr></thead><tbody>${yields}</tbody></table>` : ""}
+          <p class="alert-description" style="margin-top:6px">Rendements moyens : ${Object.entries(bm.avgYieldByUnit).map(([u, v]) => `${v} ${u}`).join(", ") || "n.d."}</p>`;
+      } catch { /* offline */ }
     } catch {
       // static/offline mode: fall back to the local mock data
       const p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);

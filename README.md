@@ -63,6 +63,9 @@ L'API (`server/server.js`, zéro dépendance) expose :
 - `GET /api/openapi.json` — **documentation publique de l'API** (OpenAPI 3, voir `docs/openapi.json`)
 - `POST /api/auth/register` / `POST /api/auth/login` / `POST /api/auth/logout` — comptes (mot de passe hashé en scrypt, jeton de session 30 j)
 - `GET /api/me` — profil du compte connecté (`Authorization: Bearer <token>`) ; un signalement soumis en étant connecté est lié au compte (`userId`)
+- `GET /api/parcels/:id` — **fiche d'identité de parcelle** (assolement, culture en cours, signalements contenus) — cas d'usage 1 du plan §3.5
+- `GET /api/neighborhood?lat&lng&radiusKm` — **voisinage à risque** (§3.2-3) : foyers de pulvérisation, ruchers < 3 km, élevages proches
+- `GET /api/benchmark?lat&lng&radiusKm` — **benchmark de territoire** (§3.2-4) : pression par bioagresseur/culture + rendements des parcelles dans le rayon
 
 Les signalements en doublon (même contributeur, culture et bioagresseur à moins
 de 250 m et 24 h) sont refusés (409).
@@ -99,6 +102,7 @@ Vérifications manuelles rapides :
 6. `http://127.0.0.1:8080/api/openapi.json` → spec OpenAPI (lisible aussi dans un Swagger UI).
 7. Créer un compte via l'API (POST `/api/auth/register` avec `{email, password, displayName}`) → récupérer le `token`, puis GET `/api/me` avec `Authorization: Bearer <token>`.
 8. Installer la PWA : icône « Install » dans la barre d'adresse (Chrome/Edge) après `npm start`.
+9. Activer la couche **Cultures & Parcelles** → cliquer sur une parcelle bleue → la fiche d'identité s'ouvre avec l'historique d'assolement, les signalements sur la parcelle, le voisinage à risque et le benchmark du territoire.
 
 ## 🗺️ Feuille de route & conformité
 

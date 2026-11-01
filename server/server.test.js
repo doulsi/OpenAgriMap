@@ -245,6 +245,37 @@ test("§3.5 fiche parcelle: GET /api/parcels/:id returns history + contained com
   assert.ok(parcel2.recentReports.some((r) => r.bioaggressor === "mildew" && r.reporter === "Jean-Paul D."));
 });
 
+test("§3.2-3 voisinage: /api/neighborhood flags apiaries <3km when spray risk exists; 422 without coords", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const bad = await fetch(`${base}/api/neighborhood`);
+  assert.equal(bad.status, 422);
+
+  // query at the seeded apiary location (47.252,-0.02) so it is within 3 km
+  const nb = await (await fetch(`${base}/api/neighborhood?lat=47.252&lng=-0.02&radiusKm=15`)).json();
+  assert.ok(nb.apiariesWithin3km.length >= 1, "at least one apiary within 3 km");
+  assert.ok(nb.activeReportsNearby >= 1);
+  assert.ok(typeof nb.sprayRiskCount === "number");
+  assert.ok(nb.alert === null || typeof nb.alert === "string");
+});
+
+test("§3.2-4 benchmark: /api/benchmark aggregates pressure by aggressor and yields within radius", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const bm = await (await fetch(`${base}/api/benchmark?lat=47.25&lng=-0.01&radiusKm=30`)).json();
+  assert.equal(bm.radiusKm, 30);
+  assert.ok(bm.reportsInTerritory >= 1);
+  assert.ok(Object.keys(bm.pressureByAggressor).length >= 1);
+  assert.ok(Array.isArray(bm.yieldSamples));
+  assert.ok(Object.keys(bm.avgYieldByUnit).length >= 1, "avg yields computed from parcel history");
+
+  // middle of the Atlantic: guaranteed empty
+  const far = await (await fetch(`${base}/api/benchmark?lat=45.0&lng=-30.0&radiusKm=50`)).json();
+  assert.equal(far.reportsInTerritory, 0);
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
