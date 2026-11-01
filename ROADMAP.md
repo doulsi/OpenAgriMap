@@ -5,7 +5,7 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 
 | Période | Objectif | Priorités |
 |---|---|---|
-| M1-M3 | Backend + base PostGIS + comptes + vrais signalements (fin des mocks) ; proxy de cache serveur | P1, P3 |
+| M1-M3 | Backend + base PostGIS + comptes + vrais signalements (fin des mocks) ; proxy de cache serveur | P1, **P3 done** |
 | M4-M6 | PWA mobile + géolocalisation + photos ; modération et réputation ; gamification v1 | P2, P4, P5 |
 | M7-M9 | Lancement communautaire (2-3 départements pilotes) ; partenariats Vigie-Nature/Spipoll et LPO | — |
 | M10-M12 | API publique documentée + export JSON ; dossier bourse/financement ; évaluation RGPD/RPG avec un juriste | P6, P7 |
@@ -15,6 +15,7 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 
 - [x] Schéma d'observation standardisé (`schema/observation.schema.json`)
 - [x] API Node sans dépendance (`server/`) : `GET/POST /api/reports`, proxy de cache `/api/proxy/*`
+- [x] **P3** : appels navigateur Open-Meteo / ISRIC / GBIF / IGN geocodage / Nominatim basculés sur `/api/proxy/:source` (cache 10 min côté serveur)
 - [x] Refus des signalements anonymes (validation schéma, 422)
 - [x] Licences : code MIT, données ODbL ; `CONTRIBUTING.md`
 - [ ] Comptes utilisateurs (email/OAuth) et persistance PostGIS — **P1 bloquant**

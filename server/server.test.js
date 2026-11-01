@@ -137,6 +137,14 @@ test("GET /api/proxy/:source rejects unknown sources (404)", async (t) => {
   assert.equal(res.status, 404);
 });
 
+
+test("proxy routes the five P3 upstream sources (soilgrids, openmeteo, gbif, geocode, nominatim)", () => {
+  const { PROXY_TARGETS } = require("./server");
+  for (const src of ["soilgrids", "openmeteo", "gbif", "geocode", "nominatim"]) {
+    assert.ok(PROXY_TARGETS[src], `missing proxy source ${src}`);
+  }
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());

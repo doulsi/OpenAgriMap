@@ -35,8 +35,11 @@ const MIME = {
 };
 
 const PROXY_TARGETS = {
-  soilgrids: "https://rest.isric.org/soilgrids/v2.0/properties/get",
-  openmeteo: "https://api.open-meteo.com/v1/forecast"
+  soilgrids: "https://rest.isric.org/soilgrids/v2.0/properties/query",
+  openmeteo: "https://api.open-meteo.com/v1/forecast",
+  gbif: "https://api.gbif.org/v1/occurrence/search",
+  geocode: "https://data.geopf.fr/geocodage/search",
+  nominatim: "https://nominatim.openstreetmap.org/search"
 };
 
 const PROXY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -171,7 +174,9 @@ function createServer({ store, schema } = {}) {
           return res.end(cached.body);
         }
 
-        const upstream = await fetch(`${target}?${url.searchParams.toString()}`);
+        const headers = {};
+        if (source === "nominatim") headers["User-Agent"] = "OpenAgriMap/0.2 (open source agriculture map)";
+        const upstream = await fetch(`${target}?${url.searchParams.toString()}`, { headers });
         const body = await upstream.text();
         proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
         res.writeHead(upstream.status, {
@@ -206,4 +211,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer };
+module.exports = { createServer, PROXY_TARGETS };
