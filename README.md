@@ -124,3 +124,5 @@ L'application n'utilise aucun service commercial propriétaire et intègre 4 fon
 - **GBIF / INPN** : CC-BY 4.0 / Licence Ouverte SINP
 - **Données participatives OpenAgriMap** : Open Database License (ODbL)
 
+Conformité (RGPD, licences, RPG/ASP) : voir [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
+
