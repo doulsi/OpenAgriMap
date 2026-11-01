@@ -119,7 +119,7 @@ Les codes culture du RPG (ex. **MIS = Miscanthus**, **BTH = Blé tendre de print
 
 ## 🗺️ Feuille de route & conformité
 
-[ROADMAP.md](ROADMAP.md) (priorités P1–P7 du plan produit & business v2), conformité RGPD/licences/RPG dans [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
+[ROADMAP.md](ROADMAP.md) (priorités P1–P7 du plan produit & business v2), conformité RGPD/licences/RPG dans [docs/COMPLIANCE.md](docs/COMPLIANCE.md), architecture de la contribution ouverte (signalements citoyens, modération, anti-abus) dans [docs/CONTRIBUTION-ARCHITECTURE.md](docs/CONTRIBUTION-ARCHITECTURE.md).
 
 ## 🤝 Contribuer
 

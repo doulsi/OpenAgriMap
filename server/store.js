@@ -154,6 +154,24 @@ class ReportStore {
     });
   }
 
+  get(id) {
+    return this.reports.find((r) => r.id === id) || null;
+  }
+
+  /** File de modération : signalements communautaires en attente de validation. */
+  pendingModeration() {
+    return this.reports.filter((r) => r.origin === "community" && r.status === "pending_moderation");
+  }
+
+  /** Suppression (modérateur/admin ou propriétaire du signalement). */
+  remove(id) {
+    const i = this.reports.findIndex((r) => r.id === id);
+    if (i < 0) return null;
+    const [removed] = this.reports.splice(i, 1);
+    this.persist();
+    return removed;
+  }
+
   /** P2 modération : change le statut d'un signalement (pending_moderation / confirmed / rejected). */
   setStatus(id, status) {
     const allowed = ["pending_moderation", "confirmed", "rejected"];

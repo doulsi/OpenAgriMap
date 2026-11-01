@@ -42,12 +42,20 @@
     },
     "/api/reports": {
       "get": {
-        "summary": "Liste des signalements (filtre optionnel par bbox)",
+        "summary": "Liste des signalements (filtres optionnels bbox et statut)",
         "parameters": [
           {
             "name": "bbox",
             "in": "query",
             "description": "minLng,minLat,maxLng,maxLat",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtre par statut (séparés par des virgules) : pending_moderation,confirmed,rejected ; « all » = sans filtre",
             "schema": {
               "type": "string"
             }
@@ -60,7 +68,7 @@
         }
       },
       "post": {
-        "summary": "Crée un signalement (validé contre schema/observation.schema.json ; signalements anonymes refusés)",
+        "summary": "Crée un signalement citoyen (validé contre schema/observation.schema.json ; anonyme refusé ; rate-limiter ; doublon 409)",
         "requestBody": {
           "required": true,
           "content": {
@@ -83,13 +91,16 @@
           },
           "422": {
             "description": "Ne respecte pas le schéma (ex : anonyme)"
+          },
+          "429": {
+            "description": "Rate limit atteint (fenêtre glissante par IP et par nom d'affichage) — en-tête Retry-After"
           }
         }
       }
     },
     "/api/reports/{id}": {
       "patch": {
-        "summary": "Modération d'un signalement (prototype local ; à restreindre avec les comptes P1)",
+        "summary": "Modération d'un signalement (rôle moderator/admin requis, Bearer token)",
         "parameters": [
           {
             "name": "id",
@@ -124,11 +135,54 @@
           "200": {
             "description": "Signalement mis à jour"
           },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle moderator/admin requis"
+          },
           "404": {
             "description": "Inconnu"
           },
           "422": {
             "description": "Statut invalide"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Supprime un signalement (moderator/admin, ou propriétaire authentifié du signalement)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Supprimé"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Ni modérateur/admin, ni propriétaire"
+          },
+          "404": {
+            "description": "Inconnu"
           }
         }
       }
@@ -396,6 +450,68 @@
           }
         }
       }
+    },
+    "/api/uploads/photo": {
+      "post": {
+        "summary": "Upload d'une photo de signalement (base64 data URL, png/jpeg/webp/gif, ≤ 2 Mo décodé, rate-limiter par IP)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "dataUrl"
+                ],
+                "properties": {
+                  "dataUrl": {
+                    "type": "string",
+                    "description": "data:image/png;base64,..."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Photo stockée — { url: /uploads/<file>, bytes }"
+          },
+          "400": {
+            "description": "JSON invalide"
+          },
+          "413": {
+            "description": "Payload trop grand"
+          },
+          "422": {
+            "description": "dataUrl invalide ou image trop grande"
+          },
+          "429": {
+            "description": "Rate limit uploads"
+          }
+        }
+      }
+    },
+    "/api/moderation/queue": {
+      "get": {
+        "summary": "File de modération : signalements pending_moderation (moderator/admin requis)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ count, reports }"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle moderator/admin requis"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -501,6 +617,13 @@
             }
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token de session (POST /api/auth/login ou /api/auth/register)"
       }
     }
   }
