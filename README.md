@@ -61,12 +61,48 @@ L'API (`server/server.js`, zéro dépendance) expose :
 - `GET /api/reporters/:name/reputation` — score de réputation + niveau de gamification
 - `GET /api/export.geojson` — **export open data** des signalements communautaires (GeoJSON, ODbL)
 - `GET /api/openapi.json` — **documentation publique de l'API** (OpenAPI 3, voir `docs/openapi.json`)
+- `POST /api/auth/register` / `POST /api/auth/login` / `POST /api/auth/logout` — comptes (mot de passe hashé en scrypt, jeton de session 30 j)
+- `GET /api/me` — profil du compte connecté (`Authorization: Bearer <token>`) ; un signalement soumis en étant connecté est lié au compte (`userId`)
 
 Les signalements en doublon (même contributeur, culture et bioagresseur à moins
 de 250 m et 24 h) sont refusés (409).
 
-La persistance par défaut est un fichier JSON (`data/reports.json`, gitignoré),
-en attendant PostgreSQL/PostGIS + comptes utilisateurs (voir [ROADMAP.md](ROADMAP.md)).
+La persistance par défaut est un fichier JSON (`data/reports.json`, gitignoré) ;
+le schéma cible PostgreSQL/PostGIS est dans [`server/schema.sql`](server/schema.sql).
+
+## 📱 PWA & mobile (P4)
+
+Servie via `npm start`, l'app est **installable** (manifest + service worker `sw.js`) :
+l'icône 🌾 apparaît dans « Ajouter à l'écran d'accueil » (Android) / « Sur l'écran d'accueil » (iOS).
+Hors ligne, le shell de l'app reste disponible (cache) et les appels API retombent sur le cache.
+Le bouton **Position actuelle** du formulaire utilise le GPS du téléphone (`navigator.geolocation`),
+et un champ **photo** permet de joindre une image (aperçu local ; l'upload réel arrive avec les comptes P1).
+
+## 🎮 Gamification (P5)
+
+Niveaux selon les signalements **confirmés** : 🌱 Graine (0) → 🪴 Jardinier (3) → 🚜 Maraîcher (10) → 🎓 Agronome (25).
+Le badge de niveau s'affiche en direct dans le formulaire de signalement (`GET /api/reporters/:name/reputation`).
+
+## 🧪 Tester
+
+```bash
+npm test          # 16 tests node --test (aucun accès réseau requis)
+npm start         # puis ouvrir http://127.0.0.1:8080
+```
+
+Vérifications manuelles rapides :
+1. Ouvrir http://127.0.0.1:8080 → la carte se charge, la bannière affiche les foyers du rayon.
+2. **Signaler une alerte** → remplir le formulaire (nom d'affichage obligatoire) → toast de succès, le point apparaît.
+3. Soumettre le **même** signalement → toast d'erreur (409 doublon).
+4. Ouvrir `http://127.0.0.1:8080/api/reports` dans le navigateur → liste JSON des signalements.
+5. `http://127.0.0.1:8080/api/export.geojson` → export GeoJSON ODbL (téléchargeable).
+6. `http://127.0.0.1:8080/api/openapi.json` → spec OpenAPI (lisible aussi dans un Swagger UI).
+7. Créer un compte via l'API (POST `/api/auth/register` avec `{email, password, displayName}`) → récupérer le `token`, puis GET `/api/me` avec `Authorization: Bearer <token>`.
+8. Installer la PWA : icône « Install » dans la barre d'adresse (Chrome/Edge) après `npm start`.
+
+## 🗺️ Feuille de route & conformité
+
+[ROADMAP.md](ROADMAP.md) (priorités P1–P7 du plan produit & business v2), conformité RGPD/licences/RPG dans [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
 ## 🤝 Contribuer
 
