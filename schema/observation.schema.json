@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagrimap.fr/schema/observation.schema.json",
+  "title": "OpenAgriMap Observation",
+  "description": "Schéma standardisé d'une observation sanitaire ou agronomique contribuée. Tout signalement accepté par l'API doit s'y conformer. Les signalements anonymes sont refusés (reporter.displayName obligatoire).",
+  "type": "object",
+  "required": ["bioaggressor", "severity", "crop", "location", "observedAt", "reporter"],
+  "additionalProperties": false,
+  "properties": {
+    "bioaggressor": {
+      "type": "string",
+      "description": "Bioagresseur ou maladie observée.",
+      "enum": ["mildew", "rust", "colorado_beetle", "aphids", "powdery_mildew", "box_moth", "other"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "crop": {
+      "type": "string",
+      "description": "Culture touchée (ex: Tomate Coeur de Boeuf).",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "variety": {
+      "type": "string",
+      "description": "Variété cultivée, si connue.",
+      "maxLength": 120
+    },
+    "stage": {
+      "type": "string",
+      "description": "Stade phénologique de la culture (ex: floraison, nouaison).",
+      "maxLength": 80
+    },
+    "location": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "additionalProperties": false,
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+    "observedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date et heure de l'observation (ISO 8601)."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Symptômes observés, conditions météo récentes...",
+      "maxLength": 2000
+    },
+    "photoUrl": {
+      "type": "string",
+      "description": "URL d'une photo de l'observation (hébergée par le contributeur).",
+      "maxLength": 500
+    },
+    "reporter": {
+      "type": "object",
+      "required": ["role", "displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["gardener", "farmer", "advisor", "researcher", "other"]
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Nom d'affichage public du contributeur. Obligatoire : les signalements anonymes sont refusés.",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      }
+    }
+  }
+}

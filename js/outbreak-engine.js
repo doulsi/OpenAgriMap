@@ -113,13 +113,12 @@ class OutbreakEngine {
    */
   addReport(newReportData) {
     const newReport = {
-      id: `rep-user-${Date.now()}`,
+      id: newReportData.id || `rep-user-${Date.now()}`,
       disease: newReportData.disease,
       diseaseName: this.getDiseaseDisplayName(newReportData.disease),
       severity: newReportData.severity || 'medium',
       crop: newReportData.crop || 'Culture maraîchère',
-      reporter: newReportData.reporter || 'Jardinier citoyen (Vous)',
-      reporterRole: newReportData.reporterRole || 'gardener',
+      reporter: newReportData.reporter || 'Jardinier citoyen (Vous)',      reporterRole: newReportData.reporterRole || 'gardener',
       lat: parseFloat(newReportData.lat),
       lng: parseFloat(newReportData.lng),
       date: "À l'instant",
