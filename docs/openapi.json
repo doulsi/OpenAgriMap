@@ -296,6 +296,26 @@
           }
         }
       }
+    },
+    "/api/proxy/apicarto/{subpath}": {
+      "get": {
+        "summary": "Pass-through cache (1h) vers ApiCarto IGN — ex: /api/proxy/apicarto/rpg/ilot?bbox=... pour les îlots RPG live (Licence Ouverte 2.0)",
+        "parameters": [
+          {
+            "name": "subpath",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GeoJSON amont"
+          }
+        }
+      }
     }
   },
   "components": {

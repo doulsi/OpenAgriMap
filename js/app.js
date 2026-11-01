@@ -182,12 +182,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // LAYER 3: Crop Parcels (RPG style)
   // Plan §3.5 use case 1: fiche d'identité de parcelle (side panel)
-  async function openParcelSheet(parcelId) {
+  async function openParcelSheet(parcelId, liveParcel = null) {
     let sheet = document.getElementById("parcelSheet");
     if (!sheet) {
       sheet = document.createElement("aside");
       sheet.id = "parcelSheet";
       sheet.className = "sidebar parcel-sheet";
+      sheet.style.display = "none";
       document.querySelector(".app-container").appendChild(sheet);
     }
     sheet.innerHTML = `<div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité de parcelle</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div><p>Chargement…</p>`;
@@ -247,8 +248,11 @@ document.addEventListener("DOMContentLoaded", () => {
           <p class="alert-description" style="margin-top:6px">Rendements moyens : ${Object.entries(bm.avgYieldByUnit).map(([u, v]) => `${v} ${u}`).join(", ") || "n.d."}</p>`;
       } catch { /* offline */ }
     } catch {
-      // static/offline mode: fall back to the local mock data
-      const p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
+      // static/offline mode or live ilot: fall back to mock data or the ApiCarto properties
+      let p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
+      if (!p && liveParcel) {
+        p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_ilot || null, currentCrop: `Code culture ${liveParcel.props.code_culture || "?"}`, variety: "", cropCode: liveParcel.props.code_culture || "", history: [] };
+      }
       if (p) {
         const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
         sheet.innerHTML = `
@@ -256,9 +260,9 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="alert-banner-card">
             <h2 class="alert-headline" style="font-size:1.1rem">${p.name}</h2>
             <p class="alert-description">${p.farm} (${p.region}) • ${p.areaHa} ha</p>
-            <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop} — <em>${p.variety}</em></p>
+            <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop} ${p.variety ? `— <em>${p.variety}</em>` : ""}</p>
           </div>
-          <section class="layers-manager-section"><div class="section-title-row"><h3>Historique d'assolement (mode hors ligne)</h3></div>
+          <section class="layers-manager-section"><div class="section-title-row"><h3>Historique d'assolement (mode hors ligne / îlot live)</h3></div>
           <table class="popup-history-table"><thead><tr><th>Année</th><th>Culture</th><th>Obs.</th></tr></thead><tbody>${historyRows}</tbody></table></section>`;
         if (window.lucide) lucide.createIcons();
         document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
@@ -266,12 +270,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Live RPG parcels from ApiCarto (through the server proxy), debounced on map move.
+  // Falls back to the bundled mock parcels when offline/static.
+  let liveParcelsLayer = null;
+  let rpgDebounce = null;
+  async function loadLiveRpgParcels() {
+    const b = map.getBounds();
+    const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
+    try {
+      const res = await fetch(`/api/proxy/apicarto/rpg/ilot?bbox=${bbox}`);
+      if (!res.ok) throw new Error("api");
+      const data = await res.json();
+      const feats = (data.features || []).slice(0, 400); // cap for rendering perf
+      if (liveParcelsLayer) cropLayerGroup.removeLayer(liveParcelsLayer);
+      liveParcelsLayer = L.geoJSON(feats, {
+        style: { color: "#f59e0b", weight: 1.5, fillColor: "#f59e0b", fillOpacity: 0.18 },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {};
+          const ilotId = p.id_ilot || p.id || feature.id;
+          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">ÎLOT RPG (donnée live IGN/ASP)</div><h4>Îlot ${ilotId}</h4><div class="popup-sub">Culture ${p.code_culture || "?"} • ${p.surf_ilot ? p.surf_ilot.toFixed(1) + " ha" : ""}</div></div>`);
+          layer.on("click", () => openParcelSheet(ilotId, { name: `Îlot RPG ${ilotId}`, props: p }));
+        }
+      });
+      cropLayerGroup.addLayer(liveParcelsLayer);
+    } catch { /* offline: mock parcels remain */ }
+  }
+
+  map.on("moveend", () => {
+    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (map.getZoom() < 12) return; // too many ilots below z12; WMS raster covers the overview
+    clearTimeout(rpgDebounce);
+    rpgDebounce = setTimeout(loadLiveRpgParcels, 600);
+  });
+
   function renderCropLayer() {
     cropLayerGroup.clearLayers();
     if (!document.getElementById("toggleCropLayer").checked) return;
 
     // 1. Add official IGN nationwide WMS layer (displays all agricultural parcels in France when zoomed in)
     cropLayerGroup.addLayer(nationalRpgWmsLayer);
+    if (map.getZoom() >= 12) loadLiveRpgParcels();
 
     // 2. Add detailed interactive parcels with complete rotation history
     CROP_PARCELS.forEach(parcel => {
