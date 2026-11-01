@@ -202,7 +202,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const p = await res.json();
       let historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
       // live parcel (ilot id, no mock history): fetch real RPG multi-year history at the parcel center
-      if (!historyRows && liveParcel && liveParcel.lat && liveParcel.lng) {
+      const hp = liveParcel && liveParcel.lat != null ? { lat: liveParcel.lat, lng: liveParcel.lng }
+        : (p.coords && p.coords.length ? { lat: p.coords.reduce((a,c)=>a+c[0],0)/p.coords.length, lng: p.coords.reduce((a,c)=>a+c[1],0)/p.coords.length } : null);
+      if (!historyRows && hp) {
+        liveParcel = { ...(liveParcel || {}), lat: hp.lat, lng: hp.lng };
         try {
           const hist = await (await fetch(`/api/rpg/history?lat=${liveParcel.lat}&lng=${liveParcel.lng}`)).json();
           historyRows = (hist.years || []).map(y => `<tr><td><strong>${y.year}</strong></td><td>${cultureLabel(y.code_cultu)}</td><td>${y.surf_parc != null ? y.surf_parc + " ha" : ""}</td></tr>`).join("")
@@ -216,7 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="alert-banner-card">
           <h2 class="alert-headline" style="font-size:1.1rem">${p.name}</h2>
           <p class="alert-description">${p.farm} (${p.region}) • ${p.areaHa} ha ${p.organicCertified ? '• <span class="badge-bio">BIO 🌿</span>' : ""}</p>
-          <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop}${p.cropCode ? ` — <em>${cultureLabel(p.cropCode)}</em>` : ""} ${p.variety ? `(variété ${p.variety})` : ""}</p>
+          <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop}${p.cropCode ? ` — <em title="Code RPG ${p.cropCode}">${cultureLabel(p.cropCode)}</em> <span class="badge-sev-low">${p.cropCode}</span>` : ""} ${p.variety ? `(variété ${p.variety})` : ""}</p>
           <p class="alert-description"><strong>Prix de référence du fermage :</strong> ${p.referenceLeasePriceEURperHa ? p.referenceLeasePriceEURperHa + " €/ha/an" : "donnée non disponible (source à brancher, plan §3.2 item 2)"}</p>
         </div>
         <section class="layers-manager-section">
@@ -345,7 +348,7 @@ document.addEventListener("DOMContentLoaded", () => {
         onEachFeature: (feature, layer) => {
           const p = feature.properties || {};
           const ilotId = p.id_parcel || p.id_ilot || feature.id;
-          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">${cultureLabel(p.code_cultu)} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
+          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">${cultureLabel(p.code_cultu)} <span class="badge-sev-low">${p.code_cultu || "?"}</span> • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
           layer.on("click", () => {
             const c = layer.getBounds().getCenter();
             openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p, lat: c.lat, lng: c.lng });
@@ -915,6 +918,24 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("cancelReportModalBtn").addEventListener("click", () => reportModal.classList.add("hidden"));
 
   document.getElementById("openSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.remove("hidden"));
+
+  // Glossary modal: complete RPG culture-code table, searchable
+  const glossaryModal = document.getElementById("glossaryModal");
+  const glossaryBody = document.getElementById("glossaryTableBody");
+  function renderGlossary(filter = "") {
+    const q = filter.trim().toUpperCase();
+    glossaryBody.innerHTML = Object.entries(CULTURE_CODES)
+      .filter(([code, label]) => !q || code.includes(q) || label.toUpperCase().includes(q))
+      .map(([code, label]) => `<tr><td><strong>${code}</strong></td><td>${label}</td></tr>`)
+      .join("");
+  }
+  document.getElementById("openGlossaryModalBtn").addEventListener("click", () => {
+    renderGlossary();
+    glossaryModal.classList.remove("hidden");
+  });
+  document.getElementById("closeGlossaryModalBtn").addEventListener("click", () => glossaryModal.classList.add("hidden"));
+  document.getElementById("confirmGlossaryModalBtn").addEventListener("click", () => glossaryModal.classList.add("hidden"));
+  document.getElementById("glossarySearchInput").addEventListener("input", (e) => renderGlossary(e.target.value));
   document.getElementById("closeSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
   document.getElementById("confirmSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
 

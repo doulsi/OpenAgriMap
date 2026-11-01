@@ -308,6 +308,26 @@ test("RPG parcels endpoint: 422 without bbox; 200 shape check against a stubbed 
   assert.equal(bad2.status, 422);
 });
 
+test("polygonContains/polygonCentroid handle real ApiCarto MultiPolygon nesting", () => {
+  const { polygonContains, polygonCentroid } = require("./server");
+  const ring = [[4.0346, 49.2793], [4.0344, 49.2793], [4.0343, 49.2797], [4.0344, 49.2798], [4.0346, 49.2793]];
+  const mp = { type: "MultiPolygon", coordinates: [[[...ring]]] }; // part -> ring -> points
+  assert.equal(polygonContains(mp, [4.0344, 49.2795]), true);
+  assert.equal(polygonContains(mp, [4.03, 49.26]), false);
+  const c = polygonCentroid(mp);
+  assert.ok(Math.abs(c[0] - 4.0345) < 0.001 && Math.abs(c[1] - 49.2795) < 0.001);
+});
+
+test("polygonContains: ray-casting on Polygon and MultiPolygon", () => {
+  const { polygonContains } = require("./server");
+  const square = { type: "Polygon", coordinates: [[[0,0],[0,10],[10,10],[10,0],[0,0]]] };
+  assert.equal(polygonContains(square, [5, 5]), true);
+  assert.equal(polygonContains(square, [15, 5]), false);
+  const multi = { type: "MultiPolygon", coordinates: [[[[0,0],[0,10],[10,10],[10,0],[0,0]]], [[[20,20],[20,30],[30,30],[30,20],[20,20]]]] };
+  assert.equal(polygonContains(multi, [25, 25]), true);
+  assert.equal(polygonContains(multi, [15, 15]), false);
+});
+
 test("RPG history endpoint: 422 without coords", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
