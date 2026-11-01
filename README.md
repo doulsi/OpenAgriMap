@@ -66,6 +66,7 @@ L'API (`server/server.js`, zéro dépendance) expose :
 - `GET /api/me` — profil du compte connecté (`Authorization: Bearer <token>`) ; un signalement soumis en étant connecté est lié au compte (`userId`)
 - `GET /api/parcels/:id` — **fiche d'identité de parcelle** (assolement, culture en cours, signalements contenus) — cas d'usage 1 du plan §3.5
 - `GET /api/neighborhood?lat&lng&radiusKm` — **voisinage à risque** (§3.2-3) : foyers de pulvérisation, ruchers < 3 km, élevages proches
+- `GET /api/rpg/history?lat&lng&years=2020..2024` — **historique cultural réel multi-millésimes** d'une parcelle (ApiCarto RPG, codes culture traduits)
 - `GET /api/benchmark?lat&lng&radiusKm` — **benchmark de territoire** (§3.2-4) : pression par bioagresseur/culture + rendements des parcelles dans le rayon
 
 Les signalements en doublon (même contributeur, culture et bioagresseur à moins

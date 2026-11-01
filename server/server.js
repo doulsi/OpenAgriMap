@@ -148,6 +148,33 @@ function createServer({ store, schema } = {}) {
         return res.end(body);
       }
 
+      // RPG multi-year history for one point: GET /api/rpg/history?lat=&lng=&years=2020,2021,2022,2023,2024
+      // Returns per-year culture code/name for the parcelle at that point (ApiCarto rpg/v2, cached 1h).
+      if (pathname === "/api/rpg/history" && req.method === "GET") {
+        const lat = parseFloat(url.searchParams.get("lat"));
+        const lng = parseFloat(url.searchParams.get("lng"));
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return sendJson(res, 422, { error: "lat & lng required" });
+        const years = (url.searchParams.get("years") || "2020,2021,2022,2023,2024").split(",").map(y => y.trim()).filter(Boolean);
+        const geom = encodeURIComponent(JSON.stringify({ type: "Point", coordinates: [lng, lat] }));
+        const out = [];
+        for (const annee of years) {
+          const cacheKey = `rpg-hist:${annee}:${lat.toFixed(5)},${lng.toFixed(5)}`;
+          let body = proxyCache.get(cacheKey)?.body;
+          if (!body || (proxyCache.get(cacheKey)?.expiresAt || 0) <= Date.now()) {
+            const upstream = await fetch(`${PROXY_TARGETS.apicarto}/rpg/v2?annee=${annee}&geom=${geom}&_limit=5`, { headers: { accept: "application/json" } });
+            body = await upstream.text();
+            proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
+          }
+          try {
+            const fc = JSON.parse(body);
+            const f = (fc.features || [])[0];
+            const pr = f?.properties || {};
+            out.push({ year: annee, id_parcel: pr.id_parcel || null, code_cultu: pr.code_cultu || null, surf_parc: pr.surf_parc ?? null });
+          } catch { out.push({ year: annee, id_parcel: null, code_cultu: null, surf_parc: null }); }
+        }
+        return sendJson(res, 200, { lat, lng, years: out });
+      }
+
       // Plan §3.2 item 3: voisinage à risque (pulvérisation / apiculture / élevage)
       if (pathname === "/api/neighborhood" && req.method === "GET") {
         const lat = parseFloat(url.searchParams.get("lat"));
