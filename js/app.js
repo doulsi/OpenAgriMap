@@ -53,8 +53,8 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   };
 
-  // Add OSM France by default
-  tileLayers.osmfr.addTo(map);
+  // Add OSM France by default (and defensively re-add if a layer switch removed it)
+  if (!map.hasLayer(tileLayers.osmfr)) tileLayers.osmfr.addTo(map);
 
   // Layer Groups
   const soilLayerGroup = L.layerGroup().addTo(map);
@@ -272,6 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Mock parcels = OFFLINE fallback only (shown when the live RPG endpoint is unreachable).
   function renderMockParcels() {
+    if (!document.getElementById("toggleCropLayer").checked) return;
     CROP_PARCELS.forEach(parcel => {
       const polygon = L.polygon(parcel.coords, {
         color: "#3b82f6",
@@ -321,6 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let liveParcelsLayer = null;
   let rpgDebounce = null;
   async function loadLiveRpgParcels() {
+    if (!document.getElementById("toggleCropLayer").checked) return;
     const b = map.getBounds();
     const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
     try {
@@ -862,7 +864,8 @@ document.addEventListener("DOMContentLoaded", () => {
       e.currentTarget.classList.add('active');
 
       Object.values(tileLayers).forEach(layer => map.removeLayer(layer));
-      tileLayers[target].addTo(map);
+      if (tileLayers[target]) tileLayers[target].addTo(map);
+      else if (!map.hasLayer(tileLayers.osmfr)) tileLayers.osmfr.addTo(map); // unknown key -> keep a basemap
     });
   });
 
