@@ -10,6 +10,26 @@ const path = require("path");
 
 const DEFAULT_DATA_FILE = path.join(__dirname, "..", "data", "reports.json");
 
+function seedParcels() {
+  const seedFile = path.join(__dirname, "..", "js", "mock-parcels.js");
+  const src = fs.readFileSync(seedFile, "utf8");
+  const match = src.match(/const CROP_PARCELS = (\[[\s\S]*?\]);/);
+  if (!match) return [];
+  return JSON.parse(match[1]).map((p) => ({
+    id: p.id,
+    name: p.name,
+    farm: p.farm,
+    region: p.region,
+    areaHa: p.areaHa,
+    organicCertified: !!p.organicCertified,
+    currentCrop: p.currentCrop,
+    cropCode: p.cropCode,
+    variety: p.variety,
+    coords: p.coords,
+    history: p.history || []
+  }));
+}
+
 function seedReports() {
   const seedFile = path.join(__dirname, "..", "js", "mock-parcels.js");
   const src = fs.readFileSync(seedFile, "utf8");
@@ -34,10 +54,12 @@ class ReportStore {
       this.reports = Array.isArray(data) ? data : (data.reports || []);
       this.users = Array.isArray(data) ? [] : (data.users || []);
       this.sessions = Array.isArray(data) ? [] : (data.sessions || []);
+      this.parcels = Array.isArray(data) ? seedParcels() : (data.parcels || seedParcels());
     } catch (err) {
       this.reports = seedReports().map((r) => this.normalizeSeed(r));
       this.users = [];
       this.sessions = [];
+      this.parcels = seedParcels();
       this.persist();
     }
     this.nextId = this.reports.reduce((max, r) => {
@@ -63,7 +85,7 @@ class ReportStore {
   persist() {
     fs.mkdirSync(path.dirname(this.dataFile), { recursive: true });
     const tmp = this.dataFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify({ reports: this.reports, users: this.users || [], sessions: this.sessions || [] }, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify({ reports: this.reports, users: this.users || [], sessions: this.sessions || [], parcels: this.parcels || [] }, null, 2));
     fs.renameSync(tmp, this.dataFile);
   }
 
@@ -127,6 +149,18 @@ class ReportStore {
     return record;
   }
 
+  /** Plan §3.5 use case 1 : fiche d'identité d'une parcelle. */
+  getParcel(id) {
+    return (this.parcels || []).find((p) => p.id === id) || null;
+  }
+
+  /** Signalements communautaires géométriquement contenus dans la parcelle (point-in-polygon). */
+  reportsForParcel(parcel) {
+    if (!parcel || !parcel.coords) return [];
+    const ring = parcel.coords;
+    return this.reports.filter((r) => r.origin === "community" && pointInPolygon([r.location.lng, r.location.lat], ring));
+  }
+
   /** P2 réputation (style Waze) : nombre de signalements confirmés par contributeur. */
   reputation(displayName) {
     return this.reports.filter(
@@ -137,4 +171,16 @@ class ReportStore {
   }
 }
 
-module.exports = { ReportStore, seedReports, DEFAULT_DATA_FILE };
+/** Ray-casting point-in-polygon. coords: [[lat,lng],...]; point: [lng,lat]. */
+function pointInPolygon(point, ring) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = [ring[i][1], ring[i][0]];
+    const [xj, yj] = [ring[j][1], ring[j][0]];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+module.exports = { ReportStore, seedReports, seedParcels, DEFAULT_DATA_FILE };
