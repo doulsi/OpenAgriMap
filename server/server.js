@@ -126,6 +126,28 @@ function createServer({ store, schema } = {}) {
         return res.end(body);
       }
 
+      // Live RPG parcels for a bbox: GET /api/rpg/parcels?bbox=minLng,minLat,maxLng,maxLat&annee=2024&_limit=1000
+      // Proxied to ApiCarto IGN (rpg/v2, Licence Ouverte 2.0), 1h cache.
+      if (pathname === "/api/rpg/parcels" && req.method === "GET") {
+        const bbox = (url.searchParams.get("bbox") || "").split(",").map(Number);
+        if (bbox.length !== 4 || bbox.some(Number.isNaN)) return sendJson(res, 422, { error: "bbox=minLng,minLat,maxLng,maxLat required" });
+        const annee = url.searchParams.get("annee") || "2024";
+        const limit = Math.min(parseInt(url.searchParams.get("_limit") || "1000", 10) || 1000, 1000);
+        const [w, s_, e, n] = bbox;
+        const geom = encodeURIComponent(JSON.stringify({ type: "Polygon", coordinates: [[[w, s_], [w, n], [e, n], [e, s_], [w, s_]]] }));
+        const cacheKey = `rpg:${annee}:${bbox.join(",")}:${limit}`;
+        const cached = proxyCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          res.writeHead(200, { "Content-Type": "application/geo+json; charset=utf-8", "X-Cache": "HIT" });
+          return res.end(cached.body);
+        }
+        const upstream = await fetch(`${PROXY_TARGETS.apicarto}/rpg/v2?annee=${annee}&geom=${geom}&_limit=${limit}`, { headers: { accept: "application/json" } });
+        const body = await upstream.text();
+        proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
+        res.writeHead(upstream.status, { "Content-Type": "application/geo+json; charset=utf-8", "X-Cache": "MISS" });
+        return res.end(body);
+      }
+
       // Plan §3.2 item 3: voisinage à risque (pulvérisation / apiculture / élevage)
       if (pathname === "/api/neighborhood" && req.method === "GET") {
         const lat = parseFloat(url.searchParams.get("lat"));

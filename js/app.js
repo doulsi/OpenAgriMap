@@ -251,7 +251,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // static/offline mode or live ilot: fall back to mock data or the ApiCarto properties
       let p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
       if (!p && liveParcel) {
-        p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_ilot || null, currentCrop: `Code culture ${liveParcel.props.code_culture || "?"}`, variety: "", cropCode: liveParcel.props.code_culture || "", history: [] };
+        p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_parc || liveParcel.props.surf_ilot || null, currentCrop: `Culture ${liveParcel.props.code_cultu || liveParcel.props.code_culture || "?"}`, variety: "", cropCode: liveParcel.props.code_cultu || "", history: [] };
       }
       if (p) {
         const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
@@ -278,18 +278,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const b = map.getBounds();
     const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
     try {
-      const res = await fetch(`/api/proxy/apicarto/rpg/ilot?bbox=${bbox}`);
+      const res = await fetch(`/api/rpg/parcels?bbox=${bbox}&_limit=1000`);
       if (!res.ok) throw new Error("api");
       const data = await res.json();
-      const feats = (data.features || []).slice(0, 400); // cap for rendering perf
+      const feats = (data.features || []).slice(0, 1000); // ApiCarto caps at 1000 anyway
       if (liveParcelsLayer) cropLayerGroup.removeLayer(liveParcelsLayer);
       liveParcelsLayer = L.geoJSON(feats, {
         style: { color: "#f59e0b", weight: 1.5, fillColor: "#f59e0b", fillOpacity: 0.18 },
         onEachFeature: (feature, layer) => {
           const p = feature.properties || {};
-          const ilotId = p.id_ilot || p.id || feature.id;
-          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">ÎLOT RPG (donnée live IGN/ASP)</div><h4>Îlot ${ilotId}</h4><div class="popup-sub">Culture ${p.code_culture || "?"} • ${p.surf_ilot ? p.surf_ilot.toFixed(1) + " ha" : ""}</div></div>`);
-          layer.on("click", () => openParcelSheet(ilotId, { name: `Îlot RPG ${ilotId}`, props: p }));
+          const ilotId = p.id_parcel || p.id_ilot || feature.id;
+          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">Culture ${p.code_cultu || "?"} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
+          layer.on("click", () => openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p }));
         }
       });
       cropLayerGroup.addLayer(liveParcelsLayer);
@@ -298,7 +298,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   map.on("moveend", () => {
     if (!document.getElementById("toggleCropLayer").checked) return;
-    if (map.getZoom() < 12) return; // too many ilots below z12; WMS raster covers the overview
+    if (map.getZoom() < 10) return; // overview below z10 uses the WMS raster
     clearTimeout(rpgDebounce);
     rpgDebounce = setTimeout(loadLiveRpgParcels, 600);
   });
@@ -309,7 +309,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 1. Add official IGN nationwide WMS layer (displays all agricultural parcels in France when zoomed in)
     cropLayerGroup.addLayer(nationalRpgWmsLayer);
-    if (map.getZoom() >= 12) loadLiveRpgParcels();
+    if (map.getZoom() >= 10) loadLiveRpgParcels();
 
     // 2. Add detailed interactive parcels with complete rotation history
     CROP_PARCELS.forEach(parcel => {

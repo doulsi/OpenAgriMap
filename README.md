@@ -76,7 +76,7 @@ le schéma cible PostgreSQL/PostGIS est dans [`server/schema.sql`](server/schema
 ## 🌾 Parcelles : de quelques-unes à toute la France
 
 - **Vue d'ensemble (zoom < 12)** : la couche WMS raster IGN affiche déjà tous les îlots RPG de France.
-- **Zoomé (≥ 12)** : l'app charge automatiquement les **îlots RPG live** via ApiCarto IGN (à travers `/api/proxy/apicarto/rpg/ilot?bbox=...`, cache serveur 1 h) pour la zone visible — des milliers de parcelles, pas seulement les 15 mock. Cliquer sur un îlot orange ouvre sa fiche.
+- **Zoomé (≥ 10)** : l'app charge automatiquement les **parcelles RPG 2024 live** via `GET /api/rpg/parcels?bbox=...` (proxy ApiCarto IGN `rpg/v2`, cache serveur 10 min, plafond 1000 parcelles/zone) — des milliers de parcelles réelles, pas seulement les 15 mock. Cliquer sur une parcelle orange ouvre sa fiche. Données mises à jour **au clic/zoom** (requête par zone visible), pas un gros téléchargement.
 - Pour **personnaliser** : éditez `CROP_PARCELS` dans `js/mock-parcels.js` (mode hors ligne), ou branchez une autre source dans `PROXY_TARGETS` (`server/server.js`).
 
 ## 📱 PWA & mobile (P4)

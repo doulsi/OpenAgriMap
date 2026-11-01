@@ -316,6 +316,47 @@
           }
         }
       }
+    },
+    "/api/rpg/parcels": {
+      "get": {
+        "summary": "Parcelles RPG live pour une bbox (ApiCarto IGN rpg/v2, Licence Ouverte 2.0, cache 1h) — ex: ?bbox=-0.5,47.0,0.5,47.6&annee=2024&_limit=1000",
+        "parameters": [
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "minLng,minLat,maxLng,maxLat"
+          },
+          {
+            "name": "annee",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "2024"
+            }
+          },
+          {
+            "name": "_limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1000,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "FeatureCollection GeoJSON (X-Cache HIT/MISS)"
+          },
+          "422": {
+            "description": "bbox invalide"
+          }
+        }
+      }
     }
   },
   "components": {
