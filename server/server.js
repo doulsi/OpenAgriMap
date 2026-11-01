@@ -76,6 +76,23 @@ function readBody(req, limit = 64 * 1024) {
   });
 }
 
+/** True if [lng,lat] is inside a GeoJSON Polygon/MultiPolygon (ray casting, lng=x lat=y). */
+function polygonContains(geometry, pt) {
+  if (!geometry) return false;
+  const [x, y] = pt;
+  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : (geometry.coordinates || []);
+  for (const poly of polys) {
+    const ring = poly[0];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
 function createServer({ store, schema } = {}) {
   const reportStore = store || new ReportStore();
   const observationSchema = schema || loadSchema();
@@ -155,19 +172,33 @@ function createServer({ store, schema } = {}) {
         const lng = parseFloat(url.searchParams.get("lng"));
         if (Number.isNaN(lat) || Number.isNaN(lng)) return sendJson(res, 422, { error: "lat & lng required" });
         const years = (url.searchParams.get("years") || "2020,2021,2022,2023,2024").split(",").map(y => y.trim()).filter(Boolean);
-        const geom = encodeURIComponent(JSON.stringify({ type: "Point", coordinates: [lng, lat] }));
+        // A point/polygon query returns ANY parcelle intersecting it, not the one
+        // containing the point. So: fetch candidates for each millésime, then pick
+        // the feature whose polygon actually contains (lng, lat); prefer the 2024
+        // id_parcel match when several overlap.
+        const d = 0.002; // ~200 m query window
+        const geom = encodeURIComponent(JSON.stringify({ type: "Polygon", coordinates: [[[lng - d, lat - d], [lng - d, lat + d], [lng + d, lat + d], [lng + d, lat - d], [lng - d, lat - d]]] }));
+        const cacheKeyFor = (annee) => `rpg-hist:${annee}:${lat.toFixed(5)},${lng.toFixed(5)}`;
+        async function fetchYear(annee) {
+          const key = cacheKeyFor(annee);
+          let body = proxyCache.get(key)?.body;
+          if (!body || (proxyCache.get(key)?.expiresAt || 0) <= Date.now()) {
+            const upstream = await fetch(`${PROXY_TARGETS.apicarto}/rpg/v2?annee=${annee}&geom=${geom}&_limit=50`, { headers: { accept: "application/json" } });
+            body = await upstream.text();
+            proxyCache.set(key, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
+          }
+          return JSON.parse(body);
+        }
+        const fc2024 = years.includes("2024") ? await fetchYear("2024") : null;
+        const targetId = fc2024 ? (fc2024.features || []).find(f => polygonContains(f.geometry, [lng, lat]))?.properties?.id_parcel : null;
+
         const out = [];
         for (const annee of years) {
-          const cacheKey = `rpg-hist:${annee}:${lat.toFixed(5)},${lng.toFixed(5)}`;
-          let body = proxyCache.get(cacheKey)?.body;
-          if (!body || (proxyCache.get(cacheKey)?.expiresAt || 0) <= Date.now()) {
-            const upstream = await fetch(`${PROXY_TARGETS.apicarto}/rpg/v2?annee=${annee}&geom=${geom}&_limit=5`, { headers: { accept: "application/json" } });
-            body = await upstream.text();
-            proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
-          }
           try {
-            const fc = JSON.parse(body);
-            const f = (fc.features || [])[0];
+            const fc = await fetchYear(annee);
+            const feats = fc.features || [];
+            let f = targetId ? feats.find(x => x.properties?.id_parcel === targetId && polygonContains(x.geometry, [lng, lat])) : null;
+            if (!f) f = feats.find(x => polygonContains(x.geometry, [lng, lat]));
             const pr = f?.properties || {};
             out.push({ year: annee, id_parcel: pr.id_parcel || null, code_cultu: pr.code_cultu || null, surf_parc: pr.surf_parc ?? null });
           } catch { out.push({ year: annee, id_parcel: null, code_cultu: null, surf_parc: null }); }
@@ -405,4 +436,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, PROXY_TARGETS };
+module.exports = { createServer, PROXY_TARGETS, polygonContains };

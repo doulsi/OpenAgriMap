@@ -113,6 +113,10 @@ Vérifications manuelles rapides :
 8. Installer la PWA : icône « Install » dans la barre d'adresse (Chrome/Edge) après `npm start`.
 9. Activer la couche **Cultures & Parcelles** → cliquer sur une parcelle bleue → la fiche d'identité s'ouvre avec l'historique d'assolement, les signalements sur la parcelle, le voisinage à risque et le benchmark du territoire.
 
+## 🔤 Glossaire des acronymes
+
+Les codes culture du RPG (ex. **MIS = Miscanthus**, **BTH = Blé tendre de printemps**, **SNE = Sarrasin**) sont traduits automatiquement dans l'app (`js/culture-codes.js`, survolez le code). Liste complète officielle : descriptif de contenu RPG v2 (GEVES/SEMAE). Autres acronymes du projet : **RPG** = Registre Parcellaire Graphique, **PAC** = Politique Agricole Commune, **BSV** = Bulletin de Santé du Végétal, **ODbL** = Open Database License, **PWA** = Progressive Web App, **RGPD** = Règlement Général sur la Protection des Données.
+
 ## 🗺️ Feuille de route & conformité
 
 [ROADMAP.md](ROADMAP.md) (priorités P1–P7 du plan produit & business v2), conformité RGPD/licences/RPG dans [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
