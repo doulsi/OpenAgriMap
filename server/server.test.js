@@ -145,6 +145,34 @@ test("proxy routes the five P3 upstream sources (soilgrids, openmeteo, gbif, geo
   }
 });
 
+test("P6: /api/openapi.json serves a valid OpenAPI spec and /api/export.geojson exports community reports as ODbL GeoJSON", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  });
+
+  const spec = await (await fetch(`${base}/api/openapi.json`)).json();
+  assert.equal(spec.openapi, "3.0.3");
+  assert.ok(spec.paths["/api/reports"] && spec.paths["/api/export.geojson"]);
+
+  const res = await fetch(`${base}/api/export.geojson`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /geo\+json/);
+  const fc = await res.json();
+  assert.equal(fc.type, "FeatureCollection");
+  assert.match(fc.license, /odbl/);
+  const mine = fc.features.find((f) => f.id && f.properties.reporter === "Jean-Paul D.");
+  assert.ok(mine, "exported feature for the submitted report");
+  assert.deepEqual(mine.geometry.coordinates, [VALID_OBSERVATION.location.lng, VALID_OBSERVATION.location.lat]);
+  assert.equal(mine.properties.license, "ODbL-1.0");
+  // seeded (non-community) reports must NOT be exported
+  assert.ok(fc.features.every((f) => f.properties.status === "pending_moderation" || f.id.startsWith("rep-")));
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());

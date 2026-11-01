@@ -82,6 +82,49 @@ function createServer({ store, schema } = {}) {
     const pathname = url.pathname;
 
     try {
+      // P6 open by default: public API documentation (OpenAPI 3, static)
+      if (pathname === "/api/openapi.json" && req.method === "GET") {
+        const spec = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "docs", "openapi.json"), "utf8"));
+        return sendJson(res, 200, spec);
+      }
+
+      // P6: full open data export of community reports (ODbL), GeoJSON FeatureCollection
+      if (pathname === "/api/export.geojson" && req.method === "GET") {
+        const features = reportStore.list()
+          .filter((r) => r.origin === "community")
+          .map((r) => ({
+            type: "Feature",
+            id: r.id,
+            geometry: { type: "Point", coordinates: [r.location.lng, r.location.lat] },
+            properties: {
+              bioaggressor: r.bioaggressor,
+              severity: r.severity,
+              crop: r.crop,
+              variety: r.variety || null,
+              stage: r.stage || null,
+              observedAt: r.observedAt,
+              submittedAt: r.submittedAt,
+              status: r.status,
+              notes: r.notes || "",
+              reporterRole: r.reporter.role,
+              reporter: r.reporter.displayName,
+              license: "ODbL-1.0"
+            }
+          }));
+        res.writeHead(200, {
+          "Content-Type": "application/geo+json; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="openagrimap-reports.geojson"',
+          "Cache-Control": "no-store"
+        });
+        return res.end(JSON.stringify({
+          type: "FeatureCollection",
+          license: "https://opendatacommons.org/licenses/odbl/1-0/",
+          attribution: "OpenAgriMap France contributors",
+          generatedAt: new Date().toISOString(),
+          features
+        }, null, 2));
+      }
+
       if (pathname === "/api/health" && req.method === "GET") {
         return sendJson(res, 200, { status: "ok", reports: reportStore.list().length });
       }
