@@ -357,6 +357,45 @@
           }
         }
       }
+    },
+    "/api/rpg/history": {
+      "get": {
+        "summary": "Historique RPG multi-millésimes d'un point (ApiCarto rpg/v2, cache) — ex: ?lat=47.25&lng=-0.01&years=2020,2021,2022,2023,2024",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "2020,2021,2022,2023,2024"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{years: [{year, id_parcel, code_cultu, surf_parc}]}"
+          },
+          "422": {
+            "description": "lat/lng requis"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -200,14 +200,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}`);
       if (!res.ok) throw new Error("API");
       const p = await res.json();
-      const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
+      let historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
+      // live parcel (ilot id, no mock history): fetch real RPG multi-year history at the parcel center
+      if (!historyRows && liveParcel && liveParcel.lat && liveParcel.lng) {
+        try {
+          const hist = await (await fetch(`/api/rpg/history?lat=${liveParcel.lat}&lng=${liveParcel.lng}`)).json();
+          historyRows = (hist.years || []).map(y => `<tr><td><strong>${y.year}</strong></td><td>${cultureLabel(y.code_cultu)}</td><td>${y.surf_parc != null ? y.surf_parc + " ha" : ""}</td></tr>`).join("")
+            || `<tr><td colspan="3">Aucune donnée RPG pour ce point sur ces millésimes.</td></tr>`;
+        } catch { historyRows = `<tr><td colspan="3">Historique indisponible (hors ligne).</td></tr>`; }
+      }
+      if (!historyRows) historyRows = `<tr><td colspan="3">Aucun historique disponible.</td></tr>`;
       const reportsRows = (p.recentReports || []).map(r => `<tr><td>${new Date(r.observedAt).toLocaleDateString("fr-FR")}</td><td>${r.bioaggressor}</td><td><span class="badge-sev-${r.severity}">${r.severity}</span></td><td>${r.reporter}</td></tr>`).join("") || `<tr><td colspan="4">Aucun signalement communautaire sur cette parcelle.</td></tr>`;
       sheet.innerHTML = `
         <div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div>
         <div class="alert-banner-card">
           <h2 class="alert-headline" style="font-size:1.1rem">${p.name}</h2>
           <p class="alert-description">${p.farm} (${p.region}) • ${p.areaHa} ha ${p.organicCertified ? '• <span class="badge-bio">BIO 🌿</span>' : ""}</p>
-          <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop} — variété <em>${p.variety}</em> (code ${p.cropCode})</p>
+          <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop}${p.cropCode ? ` — <em>${cultureLabel(p.cropCode)}</em>` : ""} ${p.variety ? `(variété ${p.variety})` : ""}</p>
           <p class="alert-description"><strong>Prix de référence du fermage :</strong> ${p.referenceLeasePriceEURperHa ? p.referenceLeasePriceEURperHa + " €/ha/an" : "donnée non disponible (source à brancher, plan §3.2 item 2)"}</p>
         </div>
         <section class="layers-manager-section">
@@ -251,7 +260,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // static/offline mode or live ilot: fall back to mock data or the ApiCarto properties
       let p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
       if (!p && liveParcel) {
-        p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_parc || liveParcel.props.surf_ilot || null, currentCrop: `Culture ${liveParcel.props.code_cultu || liveParcel.props.code_culture || "?"}`, variety: "", cropCode: liveParcel.props.code_cultu || "", history: [] };
+        p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_parc || liveParcel.props.surf_ilot || null, currentCrop: cultureLabel(liveParcel.props.code_cultu || liveParcel.props.code_culture), variety: "", cropCode: liveParcel.props.code_cultu || "", history: [] };
       }
       if (p) {
         const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
@@ -336,8 +345,11 @@ document.addEventListener("DOMContentLoaded", () => {
         onEachFeature: (feature, layer) => {
           const p = feature.properties || {};
           const ilotId = p.id_parcel || p.id_ilot || feature.id;
-          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">Culture ${p.code_cultu || "?"} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
-          layer.on("click", () => openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p }));
+          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">${cultureLabel(p.code_cultu)} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
+          layer.on("click", () => {
+            const c = layer.getBounds().getCenter();
+            openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p, lat: c.lat, lng: c.lng });
+          });
         }
       });
       cropLayerGroup.addLayer(liveParcelsLayer);

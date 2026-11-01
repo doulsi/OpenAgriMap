@@ -308,6 +308,15 @@ test("RPG parcels endpoint: 422 without bbox; 200 shape check against a stubbed 
   assert.equal(bad2.status, 422);
 });
 
+test("RPG history endpoint: 422 without coords", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+  const bad = await fetch(`${base}/api/rpg/history`);
+  assert.equal(bad.status, 422);
+  const bad2 = await fetch(`${base}/api/rpg/history?lat=xx&lng=yy`);
+  assert.equal(bad2.status, 422);
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
