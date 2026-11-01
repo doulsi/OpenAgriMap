@@ -65,6 +65,11 @@
         <span>Signaler une alerte</span>
       </button>
 
+      <button id="openGlossaryModalBtn" class="btn btn-glass" title="Glossaire des codes culture RPG (liste complète)">
+        <i data-lucide="book-open"></i>
+        <span>Codes culture</span>
+      </button>
+
       <button id="openSourcesModalBtn" class="btn btn-glass" title="Consulter les sources Open Data officielles">
         <i data-lucide="database"></i>
         <span>Sources Open Data</span>
@@ -510,6 +515,36 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CULTURE CODES GLOSSARY (complete RPG table) -->
+  <div id="glossaryModal" class="modal-backdrop hidden">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="icon-circle db-icon"><i data-lucide="book-open"></i></div>
+          <div>
+            <h3>Glossaire des codes culture RPG</h3>
+            <p>Liste complète officielle (ASP/ISIS via data.gouv.fr, Licence Ouverte 2.0) — filtrez par code ou libellé</p>
+          </div>
+        </div>
+        <button class="close-modal-btn" id="closeGlossaryModalBtn"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <input type="text" id="glossarySearchInput" placeholder="Rechercher un code (MIS) ou un libellé (blé, maïs, vigne)..." />
+        </div>
+        <div style="max-height:50vh;overflow-y:auto">
+          <table class="popup-history-table" id="glossaryTable">
+            <thead><tr><th>Code</th><th>Culture</th></tr></thead>
+            <tbody id="glossaryTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="confirmGlossaryModalBtn">Fermer</button>
+      </div>
     </div>
   </div>
 

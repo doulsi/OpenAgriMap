@@ -78,11 +78,16 @@ function readBody(req, limit = 64 * 1024) {
 
 /** True if [lng,lat] is inside a GeoJSON Polygon/MultiPolygon (ray casting, lng=x lat=y). */
 function polygonContains(geometry, pt) {
-  if (!geometry) return false;
+  if (!geometry || !geometry.coordinates) return false;
   const [x, y] = pt;
-  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : (geometry.coordinates || []);
-  for (const poly of polys) {
-    const ring = poly[0];
+  // walk down to every ring (array of [lng,lat] points) regardless of nesting depth
+  const rings = [];
+  (function collect(node) {
+    if (!Array.isArray(node)) return;
+    if (node.length && Array.isArray(node[0]) && typeof node[0][0] === "number") rings.push(node);
+    else node.forEach(collect);
+  })(geometry.coordinates);
+  for (const ring of rings) {
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [xi, yi] = ring[i], [xj, yj] = ring[j];
@@ -91,6 +96,19 @@ function polygonContains(geometry, pt) {
     if (inside) return true;
   }
   return false;
+}
+
+/** Rough centroid [lng,lat] of a GeoJSON Polygon/MultiPolygon (mean of ring points). */
+function polygonCentroid(geometry) {
+  if (!geometry || !geometry.coordinates) return null;
+  let sx = 0, sy = 0, n = 0;
+  (function walk(node) {
+    if (!Array.isArray(node)) return;
+    if (node.length && Array.isArray(node[0]) && typeof node[0][0] === "number") {
+      for (const [x, y] of node) { sx += x; sy += y; n++; }
+    } else node.forEach(walk);
+  })(geometry.coordinates);
+  return n ? [sx / n, sy / n] : null;
 }
 
 function createServer({ store, schema } = {}) {
@@ -176,7 +194,7 @@ function createServer({ store, schema } = {}) {
         // containing the point. So: fetch candidates for each millésime, then pick
         // the feature whose polygon actually contains (lng, lat); prefer the 2024
         // id_parcel match when several overlap.
-        const d = 0.002; // ~200 m query window
+        const d = 0.05; // ~5 km query window: dense city centers / vineyards can sit >2 km from the nearest declared parcelle
         const geom = encodeURIComponent(JSON.stringify({ type: "Polygon", coordinates: [[[lng - d, lat - d], [lng - d, lat + d], [lng + d, lat + d], [lng + d, lat - d], [lng - d, lat - d]]] }));
         const cacheKeyFor = (annee) => `rpg-hist:${annee}:${lat.toFixed(5)},${lng.toFixed(5)}`;
         async function fetchYear(annee) {
@@ -197,8 +215,21 @@ function createServer({ store, schema } = {}) {
           try {
             const fc = await fetchYear(annee);
             const feats = fc.features || [];
+            // 1) the parcelle that actually contains the point
             let f = targetId ? feats.find(x => x.properties?.id_parcel === targetId && polygonContains(x.geometry, [lng, lat])) : null;
             if (!f) f = feats.find(x => polygonContains(x.geometry, [lng, lat]));
+            // 2) fallback: nearest candidate by polygon-centroid distance (city centers,
+            //    roads, undeclared land fall between parcelles)
+            if (!f) {
+              let best = null, bestD = Infinity;
+              for (const x of feats) {
+                const c = polygonCentroid(x.geometry);
+                if (!c) continue;
+                const dist = Math.hypot(c[0] - lng, c[1] - lat);
+                if (dist < bestD) { bestD = dist; best = x; }
+              }
+              f = best;
+            }
             const pr = f?.properties || {};
             out.push({ year: annee, id_parcel: pr.id_parcel || null, code_cultu: pr.code_cultu || null, surf_parc: pr.surf_parc ?? null });
           } catch { out.push({ year: annee, id_parcel: null, code_cultu: null, surf_parc: null }); }
@@ -436,4 +467,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, PROXY_TARGETS, polygonContains };
+module.exports = { createServer, PROXY_TARGETS, polygonContains, polygonCentroid };

@@ -918,6 +918,24 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("cancelReportModalBtn").addEventListener("click", () => reportModal.classList.add("hidden"));
 
   document.getElementById("openSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.remove("hidden"));
+
+  // Glossary modal: complete RPG culture-code table, searchable
+  const glossaryModal = document.getElementById("glossaryModal");
+  const glossaryBody = document.getElementById("glossaryTableBody");
+  function renderGlossary(filter = "") {
+    const q = filter.trim().toUpperCase();
+    glossaryBody.innerHTML = Object.entries(CULTURE_CODES)
+      .filter(([code, label]) => !q || code.includes(q) || label.toUpperCase().includes(q))
+      .map(([code, label]) => `<tr><td><strong>${code}</strong></td><td>${label}</td></tr>`)
+      .join("");
+  }
+  document.getElementById("openGlossaryModalBtn").addEventListener("click", () => {
+    renderGlossary();
+    glossaryModal.classList.remove("hidden");
+  });
+  document.getElementById("closeGlossaryModalBtn").addEventListener("click", () => glossaryModal.classList.add("hidden"));
+  document.getElementById("confirmGlossaryModalBtn").addEventListener("click", () => glossaryModal.classList.add("hidden"));
+  document.getElementById("glossarySearchInput").addEventListener("input", (e) => renderGlossary(e.target.value));
   document.getElementById("closeSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
   document.getElementById("confirmSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
 
