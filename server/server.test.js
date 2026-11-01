@@ -34,6 +34,14 @@ const VALID_OBSERVATION = {
   reporter: { role: "gardener", displayName: "Jean-Paul D." }
 };
 
+test("store starts with ZERO seeded reports (cold start, plan §7)", () => {
+  const { ReportStore } = require("./store");
+  const os = require("os"), path = require("path"), fs = require("fs");
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "oa-")), "r.json");
+  const store = new ReportStore(tmp);
+  assert.equal(store.list().length, 0);
+});
+
 test("validator accepts a conforming observation", () => {
   assert.deepEqual(validateObservation(VALID_OBSERVATION), []);
 });
@@ -252,6 +260,11 @@ test("§3.2-3 voisinage: /api/neighborhood flags apiaries <3km when spray risk e
   const bad = await fetch(`${base}/api/neighborhood`);
   assert.equal(bad.status, 422);
 
+  // submit a real report near the apiary first (no more seeded reports)
+  await fetch(`${base}/api/reports`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...VALID_OBSERVATION, location: { lat: 47.26, lng: -0.08 } })
+  });
   // query at the seeded apiary location (47.252,-0.02) so it is within 3 km
   const nb = await (await fetch(`${base}/api/neighborhood?lat=47.252&lng=-0.02&radiusKm=15`)).json();
   assert.ok(nb.apiariesWithin3km.length >= 1, "at least one apiary within 3 km");
@@ -264,6 +277,10 @@ test("§3.2-4 benchmark: /api/benchmark aggregates pressure by aggressor and yie
   const { server, base } = await startTestServer();
   t.after(() => server.close());
 
+  await fetch(`${base}/api/reports`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  });
   const bm = await (await fetch(`${base}/api/benchmark?lat=47.25&lng=-0.01&radiusKm=30`)).json();
   assert.equal(bm.radiusKm, 30);
   assert.ok(bm.reportsInTerritory >= 1);

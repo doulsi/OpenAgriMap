@@ -43,12 +43,13 @@ function seedApiariesAndLivestock() {
   };
 }
 
+/**
+ * Seeded mock reports removed on purpose (cold-start is handled by public data
+ * layers + the cold-start mitigation of plan §7; the alert banner must only
+ * count real community reports).
+ */
 function seedReports() {
-  const seedFile = path.join(__dirname, "..", "js", "mock-parcels.js");
-  const src = fs.readFileSync(seedFile, "utf8");
-  const match = src.match(/const INITIAL_OUTBREAK_REPORTS = (\[[\s\S]*?\]);/);
-  if (!match) return [];
-  return JSON.parse(match[1]);
+  return [];
 }
 
 class ReportStore {
