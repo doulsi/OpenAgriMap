@@ -13,14 +13,30 @@ const { createServer } = require("./server");
 const { ReportStore } = require("./store");
 const { validateObservation, loadSchema } = require("./validator");
 
-function startTestServer() {
+function startTestServer(opts = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openagrimap-"));
   const store = new ReportStore(path.join(tmpDir, "reports.json"));
-  const server = createServer({ store, schema: loadSchema() });
+  const server = createServer({ store, schema: loadSchema(), ...opts });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       resolve({ server, base: `http://127.0.0.1:${server.address().port}` });
     });
+  });
+}
+
+async function registerUser(base, email, displayName) {
+  const res = await fetch(`${base}/api/auth/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: "motdepasse-solide", displayName })
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+async function postReport(base, observation, token) {
+  return fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(observation)
   });
 }
 
@@ -363,39 +379,162 @@ test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   assert.equal(third.status, 201);
 });
 
-test("PATCH /api/reports/:id moderates a report and reputation counts confirmed ones", async (t) => {
+test("PATCH /api/reports/:id moderates a report (admin only) and reputation counts confirmed ones", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
 
-  const created = await (await fetch(`${base}/api/reports`, {
-    method: "POST",
+  const created = await (await postReport(base, VALID_OBSERVATION)).json();
+
+  // anonymous -> 401, authenticated non-moderator -> 403
+  const anon = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(VALID_OBSERVATION)
-  })).json();
+    body: JSON.stringify({ status: "confirmed" })
+  });
+  assert.equal(anon.status, 401);
+
+  const admin = (await registerUser(base, "admin@example.fr", "Admin")).body; // first user = admin
+  const contributor = (await registerUser(base, "contrib@example.fr", "Contrib")).body;
+  assert.equal(admin.user.role, "admin");
+  assert.equal(contributor.user.role, "contributor");
+
+  const forbidden = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${contributor.token}` },
+    body: JSON.stringify({ status: "confirmed" })
+  });
+  assert.equal(forbidden.status, 403);
 
   const bad = await fetch(`${base}/api/reports/${created.id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${admin.token}` },
     body: JSON.stringify({ status: "bogus" })
   });
   assert.equal(bad.status, 422);
 
   const missing = await fetch(`${base}/api/reports/rep-nope`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${admin.token}` },
     body: JSON.stringify({ status: "confirmed" })
   });
   assert.equal(missing.status, 404);
 
   const ok = await (await fetch(`${base}/api/reports/${created.id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${admin.token}` },
     body: JSON.stringify({ status: "confirmed" })
   })).json();
   assert.equal(ok.status, "confirmed");
 
+  // status filter on the public listing
+  const all = await (await fetch(`${base}/api/reports`)).json();
+  assert.ok(all.reports.some((r) => r.id === created.id));
+  const pendingOnly = await (await fetch(`${base}/api/reports?status=pending_moderation`)).json();
+  assert.ok(!pendingOnly.reports.some((r) => r.id === created.id));
+
   const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Jean-Paul D.")}/reputation`)).json();
   assert.equal(rep.confirmedReports, 1);
+});
+
+test("open contribution: moderation queue is admin-only and lists pending reports", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  await postReport(base, VALID_OBSERVATION);
+
+  const anon = await fetch(`${base}/api/moderation/queue`);
+  assert.equal(anon.status, 401);
+
+  const admin = (await registerUser(base, "admin@example.fr", "Admin")).body; // first user = admin
+  const contributor = (await registerUser(base, "contrib@example.fr", "Contrib")).body;
+  assert.equal(admin.user.role, "admin");
+  assert.equal(contributor.user.role, "contributor");
+
+  const asContrib = await fetch(`${base}/api/moderation/queue`, { headers: { Authorization: `Bearer ${contributor.token}` } });
+  assert.equal(asContrib.status, 403);
+
+  const qAdmin = await (await fetch(`${base}/api/moderation/queue`, { headers: { Authorization: `Bearer ${admin.token}` } })).json();
+  assert.ok(qAdmin.count >= 1);
+  assert.ok(qAdmin.reports.every((r) => r.status === "pending_moderation"));
+});
+
+test("DELETE /api/reports/:id — owner or moderator only", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const owner = (await registerUser(base, "owner@example.fr", "Owner")).body; // first user = admin AND owner
+  const other = (await registerUser(base, "other@example.fr", "Other")).body;
+
+  const created = await (await postReport(base, VALID_OBSERVATION, owner.token)).json();
+  assert.equal(created.userId, owner.user.id);
+
+  const anon = await fetch(`${base}/api/reports/${created.id}`, { method: "DELETE" });
+  assert.equal(anon.status, 401);
+
+  const byOther = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${other.token}` }
+  });
+  assert.equal(byOther.status, 403);
+
+  const byOwner = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${owner.token}` }
+  });
+  assert.equal(byOwner.status, 204);
+
+  const gone = await fetch(`${base}/api/reports/${created.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${owner.token}` } });
+  assert.equal(gone.status, 404);
+});
+
+test("POST /api/uploads/photo accepts a small base64 image and serves it at /uploads/*", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  // 1x1 transparent PNG
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const ok = await fetch(`${base}/api/uploads/photo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataUrl: `data:image/png;base64,${png}` })
+  });
+  assert.equal(ok.status, 201);
+  const up = await ok.json();
+  assert.ok(up.url.startsWith("/uploads/"));
+  assert.ok(up.bytes > 0);
+
+  const served = await fetch(`${base}${up.url}`);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get("content-type"), "image/png");
+
+  const bad = await fetch(`${base}/api/uploads/photo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataUrl: "data:text/html;base64,PGh0bWw+" })
+  });
+  assert.equal(bad.status, 422);
+
+  const missing = await fetch(`${base}/uploads/does-not-exist.png`);
+  assert.equal(missing.status, 404);
+});
+
+test("POST /api/reports is rate-limited per IP (429 with Retry-After)", async (t) => {
+  const { server, base } = await startTestServer({
+    rateLimits: {
+      reportsPerIp: { windowMs: 60 * 1000, max: 3 },
+      reportsPerReporter: { windowMs: 60 * 1000, max: 100 },
+      uploadsPerIp: { windowMs: 60 * 1000, max: 100 }
+    }
+  });
+  t.after(() => server.close());
+
+  for (let i = 0; i < 3; i++) {
+    const res = await postReport(base, { ...VALID_OBSERVATION, crop: `Culture ${i}` });
+    assert.equal(res.status, 201);
+  }
+  const limited = await postReport(base, { ...VALID_OBSERVATION, crop: "Encore une" });
+  assert.equal(limited.status, 429);
+  const body = await limited.json();
+  assert.ok(body.retryAfterSeconds > 0);
+  assert.ok(Number(limited.headers.get("retry-after")) > 0);
 });
 
 test("gamification P5: reputation endpoint returns the level (Graine -> Jardinier -> Maraîcher -> Agronome)", async (t) => {

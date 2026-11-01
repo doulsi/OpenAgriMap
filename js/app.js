@@ -33,7 +33,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const b = map.getBounds();
       const bbox = `${b.getWest().toFixed(3)},${b.getSouth().toFixed(3)},${b.getEast().toFixed(3)},${b.getNorth().toFixed(3)}`;
-      const res = await fetch(`/api/reports?bbox=${bbox}`);
+      // Public map shows live + moderated reports only (rejected ones stay out of the viewport).
+      const res = await fetch(`/api/reports?bbox=${bbox}&status=pending_moderation,confirmed`);
       if (!res.ok) throw new Error("api");
       const data = await res.json();
       const apiReports = (data.reports || []).map(r => ({
@@ -43,7 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
         reporter: r.reporter.displayName, reporterRole: r.reporter.role,
         lat: r.location.lat, lng: r.location.lng,
         date: new Date(r.observedAt).toLocaleString("fr-FR"),
-        notes: r.notes || "", status: r.status
+        notes: r.notes || "", status: r.status, photoUrl: r.photoUrl || null
       }));
       // Merge instead of replace: keep locally submitted reports the API does not
       // (yet) return, so offline submissions survive a viewport reload.
@@ -598,7 +599,9 @@ document.addEventListener("DOMContentLoaded", () => {
             <div><strong>Sévérité :</strong> <span class="badge-sev-${report.severity}">${report.severity.toUpperCase()}</span></div>
             <div><strong>Observateur :</strong> ${report.reporter}</div>
             <div><strong>Date :</strong> ${report.date}</div>
+            <div><strong>Modération :</strong> ${report.status === "confirmed" ? '<span class="badge-sev-low">✔ confirmé</span>' : report.status === "local" ? '<span class="badge-sev-medium">💾 local (hors ligne)</span>' : '<span class="badge-sev-medium">⏳ en attente de modération</span>'}</div>
           </div>
+          ${report.photoUrl ? `<div style="margin-top:6px"><img src="${report.photoUrl}" alt="photo du signalement" style="max-width:220px; border-radius:6px; border:1px solid #334155" /></div>` : ""}
           <div class="popup-notes">"${report.notes}"</div>
         </div>
       `);
@@ -1109,14 +1112,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const notes = document.getElementById("reportNotes").value;
     const photoInput = document.getElementById("reportPhoto");
     const photoFile = photoInput && photoInput.files && photoInput.files[0];
-    let photoUrl = "";
-    if (photoFile) {
-      photoUrl = URL.createObjectURL(photoFile); // local preview only; real upload needs P1 accounts/storage
-    }
 
     if (!reporterName) {
       showToast("Un nom d'affichage est requis : les signalements anonymes sont refusés.", "error");
       return;
+    }
+
+    // Photo evidence: uploaded to the backend (POST /api/uploads/photo) before submitting,
+    // so the stored observation only carries the served /uploads/ URL.
+    let photoUrl = "";
+    if (photoFile) {
+      try {
+        const up = await ApiClient.uploadPhoto(photoFile);
+        photoUrl = up.url;
+      } catch (err) {
+        console.warn("photo upload failed, submitting without photo:", err.message);
+        showToast("Photo non envoyée (limite atteinte ou hors ligne) : signalement envoyé sans photo.", "warning");
+      }
     }
 
     const observation = {
@@ -1153,7 +1165,9 @@ document.addEventListener("DOMContentLoaded", () => {
       lng,
       reporter: reporterName,
       reporterRole,
-      notes
+      notes,
+      status: persisted ? "pending_moderation" : "local",
+      ...(photoUrl ? { photoUrl } : {})
     });
 
     reportModal.classList.add("hidden");
@@ -1162,7 +1176,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Fly smoothly to new report and open popup
     map.flyTo([lat, lng], 13);
     showToast(persisted
-      ? `Signalement enregistré avec succès dans l'Open Data agricole ! Alerte de proximité actualisée.`
+      ? `Signalement enregistré (en attente de modération) et publié dans l'Open Data agricole. Alerte de proximité actualisée.`
       : `Signalement enregistré localement (mode hors ligne) : l'API n'est pas joignable.`, persisted ? "success" : "info");
     refreshLevelBadge();
   });

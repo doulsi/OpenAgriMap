@@ -122,7 +122,9 @@ class OutbreakEngine {
       lat: parseFloat(newReportData.lat),
       lng: parseFloat(newReportData.lng),
       date: "À l'instant",
-      notes: newReportData.notes || "Signalement communautaire en direct."
+      notes: newReportData.notes || "Signalement communautaire en direct.",
+      status: newReportData.status || "pending_moderation",
+      ...(newReportData.photoUrl ? { photoUrl: newReportData.photoUrl } : {})
     };
 
     // Prepend to list

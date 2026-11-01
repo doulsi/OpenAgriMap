@@ -3,9 +3,15 @@
  *
  * Endpoints:
  *   GET  /api/health
- *   GET  /api/reports?bbox=minLng,minLat,maxLng,maxLat
+ *   GET  /api/reports?bbox=minLng,minLat,maxLng,maxLat&status=pending_moderation,confirmed
  *   POST /api/reports          (validated against schema/observation.schema.json;
- *                               anonymous reports are rejected with 422)
+ *                               anonymous reports are rejected with 422; rate-limited
+ *                               per IP and per reporter display name; 409 on duplicate)
+ *   PATCH  /api/reports/:id    (moderator/admin only, Bearer token; status confirmed|rejected|pending_moderation)
+ *   DELETE /api/reports/:id    (moderator/admin, or the authenticated owner of the report)
+ *   GET  /api/moderation/queue (moderator/admin only: pending_moderation reports)
+ *   POST /api/uploads/photo    (rate-limited image upload for report evidence, <= 2 Mo)
+ *   GET  /uploads/*            (uploaded report photos)
  *   GET  /api/proxy/:source/*  (server-side cache proxy for browser API calls,
  *                               keeps third-party rate limits and keys off the client)
  *
@@ -17,6 +23,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { validateObservation, loadSchema } = require("./validator");
 const { ReportStore } = require("./store");
 const { levelFor } = require("./gamification");
@@ -48,6 +55,51 @@ const PROXY_TARGETS = {
 
 const PROXY_CACHE_TTL_MS = 10 * 60 * 1000;
 const proxyCache = new Map();
+
+const UPLOADS_DIR = path.join(ROOT, "data", "uploads");
+
+const UPLOAD_MIME = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif"
+};
+const UPLOAD_MAX_BYTES = 2 * 1024 * 1024; // 2 Mo decoded
+
+// Anti-abuse for the open contribution endpoints (sliding window, in-memory).
+const DEFAULT_RATE_LIMITS = {
+  reportsPerIp: { windowMs: 10 * 60 * 1000, max: 20 },
+  reportsPerReporter: { windowMs: 10 * 60 * 1000, max: 10 },
+  uploadsPerIp: { windowMs: 10 * 60 * 1000, max: 10 }
+};
+
+/** Sliding-window rate limiter. Returns {allowed, retryAfterSeconds}. */
+function createRateLimiter({ windowMs, max }) {
+  const hits = new Map(); // key -> [timestamps]
+  return {
+    check(key) {
+      const now = Date.now();
+      const arr = (hits.get(key) || []).filter((t) => now - t < windowMs);
+      if (arr.length >= max) {
+        const retryAfterSeconds = Math.ceil((arr[0] + windowMs - now) / 1000);
+        hits.set(key, arr);
+        return { allowed: false, retryAfterSeconds };
+      }
+      arr.push(now);
+      hits.set(key, arr);
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+  };
+}
+
+function clientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  return (fwd ? String(fwd).split(",")[0].trim() : req.socket.remoteAddress) || "unknown";
+}
+
+function isModerator(user) {
+  return !!user && (user.role === "admin" || user.role === "moderator");
+}
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -111,10 +163,14 @@ function polygonCentroid(geometry) {
   return n ? [sx / n, sy / n] : null;
 }
 
-function createServer({ store, schema } = {}) {
+function createServer({ store, schema, rateLimits } = {}) {
   const reportStore = store || new ReportStore();
   const observationSchema = schema || loadSchema();
   const auth = new AuthService(reportStore);
+  const limits = { ...DEFAULT_RATE_LIMITS, ...(rateLimits || {}) };
+  const limitReportsIp = createRateLimiter(limits.reportsPerIp);
+  const limitReportsName = createRateLimiter(limits.reportsPerReporter);
+  const limitUploadsIp = createRateLimiter(limits.uploadsPerIp);
 
   function bearerUser(req) {
     const h = req.headers["authorization"] || "";
@@ -352,7 +408,49 @@ function createServer({ store, schema } = {}) {
             );
           }
         }
+        // status=pending_moderation,confirmed,... ("all" = no filter; default = everything stored)
+        const statusParam = url.searchParams.get("status");
+        if (statusParam && statusParam !== "all") {
+          const wanted = new Set(statusParam.split(",").map((s) => s.trim()).filter(Boolean));
+          reports = reports.filter((r) => wanted.has(r.status));
+        }
         return sendJson(res, 200, { count: reports.length, reports });
+      }
+
+      // Open contribution: photo evidence upload (rate-limited, <= 2 Mo, images only).
+      // Body: {"dataUrl": "data:image/png;base64,...."} -> 201 {"url": "/uploads/<file>"}
+      if (pathname === "/api/uploads/photo" && req.method === "POST") {
+        const ipCheck = limitUploadsIp.check(clientIp(req));
+        if (!ipCheck.allowed) {
+          res.setHeader("Retry-After", String(ipCheck.retryAfterSeconds));
+          return sendJson(res, 429, { error: "trop d'uploads, réessayez plus tard", retryAfterSeconds: ipCheck.retryAfterSeconds });
+        }
+        let payload;
+        try {
+          payload = JSON.parse(await readBody(req, 4 * 1024 * 1024)); // dataUrl can be ~1.33x the raw size
+        } catch (err) {
+          if (err.message === "payload too large") return sendJson(res, 413, { error: "payload too large (max ~4 Mo encoded)" });
+          return sendJson(res, 400, { error: "invalid JSON body" });
+        }
+        const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/.exec(String(payload.dataUrl || ""));
+        if (!m) return sendJson(res, 422, { error: "dataUrl must be a base64 image (png/jpeg/webp/gif)" });
+        const buf = Buffer.from(m[2].replace(/\s/g, ""), "base64");
+        if (buf.length === 0 || buf.length > UPLOAD_MAX_BYTES) {
+          return sendJson(res, 422, { error: `image must be between 1 byte and ${UPLOAD_MAX_BYTES} bytes decoded` });
+        }
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        const file = `${crypto.randomBytes(12).toString("hex")}${UPLOAD_MIME[m[1]]}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, file), buf);
+        return sendJson(res, 201, { url: `/uploads/${file}`, bytes: buf.length });
+      }
+
+      // Moderation queue (moderator/admin): GET /api/moderation/queue
+      if (pathname === "/api/moderation/queue" && req.method === "GET") {
+        const user = bearerUser(req);
+        if (!user) return sendJson(res, 401, { error: "authentication required" });
+        if (!isModerator(user)) return sendJson(res, 403, { error: "moderator or admin role required" });
+        const pending = reportStore.pendingModeration();
+        return sendJson(res, 200, { count: pending.length, reports: pending });
       }
 
       if (pathname === "/api/reports" && req.method === "POST") {
@@ -361,6 +459,21 @@ function createServer({ store, schema } = {}) {
           payload = JSON.parse(await readBody(req));
         } catch {
           return sendJson(res, 400, { error: "invalid JSON body" });
+        }
+
+        // Anti-abuse: per-IP and per-reporter sliding windows (open contribution endpoint).
+        const ipCheck = limitReportsIp.check(clientIp(req));
+        if (!ipCheck.allowed) {
+          res.setHeader("Retry-After", String(ipCheck.retryAfterSeconds));
+          return sendJson(res, 429, { error: "trop de signalements depuis cette adresse, réessayez plus tard", retryAfterSeconds: ipCheck.retryAfterSeconds });
+        }
+        const name = payload && payload.reporter && payload.reporter.displayName;
+        if (name) {
+          const nameCheck = limitReportsName.check(String(name));
+          if (!nameCheck.allowed) {
+            res.setHeader("Retry-After", String(nameCheck.retryAfterSeconds));
+            return sendJson(res, 429, { error: "trop de signalements pour ce nom d'affichage, réessayez plus tard", retryAfterSeconds: nameCheck.retryAfterSeconds });
+          }
         }
 
         const errors = validateObservation(payload, observationSchema);
@@ -387,8 +500,12 @@ function createServer({ store, schema } = {}) {
       }
 
       // P2 moderation: PATCH /api/reports/:id  {"status": "confirmed"|"rejected"|"pending_moderation"}
+      // Moderator/admin only (Bearer token) — an open endpoint must not let anyone confirm/reject.
       const moderationMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
       if (moderationMatch && req.method === "PATCH") {
+        const user = bearerUser(req);
+        if (!user) return sendJson(res, 401, { error: "authentication required" });
+        if (!isModerator(user)) return sendJson(res, 403, { error: "moderator or admin role required" });
         let payload;
         try {
           payload = JSON.parse(await readBody(req));
@@ -404,6 +521,20 @@ function createServer({ store, schema } = {}) {
         }
         if (!record) return sendJson(res, 404, { error: "report not found" });
         return sendJson(res, 200, record);
+      }
+
+      // DELETE /api/reports/:id — moderator/admin, or the authenticated owner of the report
+      if (moderationMatch && req.method === "DELETE") {
+        const user = bearerUser(req);
+        if (!user) return sendJson(res, 401, { error: "authentication required" });
+        const existing = reportStore.get(moderationMatch[1]);
+        if (!existing) return sendJson(res, 404, { error: "report not found" });
+        if (!isModerator(user) && existing.userId !== user.id) {
+          return sendJson(res, 403, { error: "only a moderator/admin or the report owner can delete it" });
+        }
+        reportStore.remove(existing.id);
+        res.writeHead(204, { "Content-Type": "application/json; charset=utf-8" });
+        return res.end();
       }
 
       // P2 reputation: GET /api/reporters/:name/reputation
@@ -446,6 +577,19 @@ function createServer({ store, schema } = {}) {
           "X-Cache": "MISS"
         });
         return res.end(body);
+      }
+
+      // Uploaded report photos: GET /uploads/<file>
+      if (req.method === "GET" && pathname.startsWith("/uploads/")) {
+        const filePath = path.normalize(path.join(UPLOADS_DIR, pathname.slice("/uploads/".length)));
+        if (!filePath.startsWith(UPLOADS_DIR)) return sendJson(res, 403, { error: "forbidden" });
+        if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return sendJson(res, 404, { error: "not found" });
+        const ext = path.extname(filePath).toLowerCase();
+        res.writeHead(200, {
+          "Content-Type": Object.keys(UPLOAD_MIME).find((k) => UPLOAD_MIME[k] === ext) || "application/octet-stream",
+          "Cache-Control": "public, max-age=86400"
+        });
+        return fs.createReadStream(filePath).pipe(res);
       }
 
       if (req.method === "GET" && !pathname.startsWith("/api/")) {
