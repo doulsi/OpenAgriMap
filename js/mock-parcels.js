@@ -860,6 +860,19 @@ const CROP_PARCELS = [
   }
 ];
 
+const BIODIVERSITY_POINTS = [
+  { id: "bio-1", category: "birds", name: "Buse variable", scientificName: "Buteo buteo", lat: 47.31, lng: -0.05, role: "Rapace chasseur de rongeurs (campagnols, mulots)", date: "2026-10-12", observer: "LPO / INPN", status: "Espèce protégée — auxiliaire majeur des cultures" },
+  { id: "bio-2", category: "birds", name: "Chouette hulotte", scientificName: "Strix aluco", lat: 47.22, lng: 0.12, role: "Prédation nocturne des rongeurs des silos et parcelles", date: "2026-09-28", observer: "INPN / Vigie-Nature", status: "Espèce protégée" },
+  { id: "bio-3", category: "birds", name: "Hirondelle de fenêtre", scientificName: "Delichon urbicum", lat: 47.26, lng: -0.08, role: "Consommation massive d'insectes volants (pucerons, moucherons)", date: "2026-10-02", observer: "INPN", status: "Auxiliaire — population suivie" },
+  { id: "bio-4", category: "pollinators", name: "Abeille domestique", scientificName: "Apis mellifera", lat: 47.252, lng: -0.02, role: "Pollinisation des vergers et cultures maraîchères", date: "2026-10-20", observer: "Spipoll / MNHN", status: "Suivi participatif Spipoll" },
+  { id: "bio-5", category: "pollinators", name: "Bourdon terrestre", scientificName: "Bombus terrestris", lat: 47.30, lng: 0.05, role: "Pollinisateur de la tomate sous abri (bourdonnement vibreur)", date: "2026-10-15", observer: "Spipoll / MNHN", status: "Suivi participatif Spipoll" },
+  { id: "bio-6", category: "insects", name: "Coccinelle à 7 points", scientificName: "Coccinella septempunctata", lat: 47.28, lng: -0.02, role: "Prédation des pucerons (jusqu'à 100/jour)", date: "2026-10-25", observer: "INPN", status: "Auxiliaire — lâchers biologiques" },
+  { id: "bio-7", category: "insects", name: "Syrphe ceinturé", scientificName: "Episyrphus balteatus", lat: 47.24, lng: 0.08, role: "Larves prédatrices de pucerons ; adulte pollinisateur", date: "2026-10-18", observer: "INPN", status: "Auxiliaire double (larve + adulte)" },
+  { id: "bio-8", category: "insects", name: "Chrysope verte", scientificName: "Chrysoperla carnea", lat: 47.33, lng: -0.11, role: "Larves voraces de pucerons, cochenilles, œufs de doryphore", date: "2026-10-22", observer: "INPN", status: "Auxiliaire — lâchers en serres" },
+  { id: "bio-9", category: "birds", name: "Faucon crécerelle", scientificName: "Falco tinnunculus", lat: 47.40, lng: 0.02, role: "Régulation des populations de campagnols en prairie", date: "2026-10-08", observer: "LPO", status: "Espèce protégée" },
+  { id: "bio-10", category: "pollinators", name: "Osmie rousse", scientificName: "Osmia bicornis", lat: 47.29, lng: 0.03, role: "Pollinisateur solitaire très efficace des arbres fruitiers", date: "2026-04-15", observer: "Spipoll / MNHN", status: "Espèce printanière — nichoirs" }
+];
+
 const SOIL_WATER_STATIONS = [
   {
     "id": "wat-fr-loire",
