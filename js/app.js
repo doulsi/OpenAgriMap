@@ -22,8 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
     center: { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng }
   };
 
-  // Instantiate Outbreak Engine with 17 initial seeded reports
-  const outbreakEngine = new OutbreakEngine(INITIAL_OUTBREAK_REPORTS);
+  // Outbreak engine starts EMPTY: only real community reports count (mock seeds removed).
+  const outbreakEngine = new OutbreakEngine([]);
 
   // 1. INITIALIZE LEAFLET MAP
   const map = L.map("map", {
@@ -270,48 +270,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Live RPG parcels from ApiCarto (through the server proxy), debounced on map move.
-  // Falls back to the bundled mock parcels when offline/static.
-  let liveParcelsLayer = null;
-  let rpgDebounce = null;
-  async function loadLiveRpgParcels() {
-    const b = map.getBounds();
-    const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
-    try {
-      const res = await fetch(`/api/rpg/parcels?bbox=${bbox}&_limit=1000`);
-      if (!res.ok) throw new Error("api");
-      const data = await res.json();
-      const feats = (data.features || []).slice(0, 1000); // ApiCarto caps at 1000 anyway
-      if (liveParcelsLayer) cropLayerGroup.removeLayer(liveParcelsLayer);
-      liveParcelsLayer = L.geoJSON(feats, {
-        style: { color: "#f59e0b", weight: 1.5, fillColor: "#f59e0b", fillOpacity: 0.18 },
-        onEachFeature: (feature, layer) => {
-          const p = feature.properties || {};
-          const ilotId = p.id_parcel || p.id_ilot || feature.id;
-          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">Culture ${p.code_cultu || "?"} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
-          layer.on("click", () => openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p }));
-        }
-      });
-      cropLayerGroup.addLayer(liveParcelsLayer);
-    } catch { /* offline: mock parcels remain */ }
-  }
-
-  map.on("moveend", () => {
-    if (!document.getElementById("toggleCropLayer").checked) return;
-    if (map.getZoom() < 10) return; // overview below z10 uses the WMS raster
-    clearTimeout(rpgDebounce);
-    rpgDebounce = setTimeout(loadLiveRpgParcels, 600);
-  });
-
-  function renderCropLayer() {
-    cropLayerGroup.clearLayers();
-    if (!document.getElementById("toggleCropLayer").checked) return;
-
-    // 1. Add official IGN nationwide WMS layer (displays all agricultural parcels in France when zoomed in)
-    cropLayerGroup.addLayer(nationalRpgWmsLayer);
-    if (map.getZoom() >= 10) loadLiveRpgParcels();
-
-    // 2. Add detailed interactive parcels with complete rotation history
+  // Mock parcels = OFFLINE fallback only (shown when the live RPG endpoint is unreachable).
+  function renderMockParcels() {
     CROP_PARCELS.forEach(parcel => {
       const polygon = L.polygon(parcel.coords, {
         color: "#3b82f6",
@@ -354,6 +314,56 @@ document.addEventListener("DOMContentLoaded", () => {
 
       cropLayerGroup.addLayer(polygon);
     });
+  }
+
+  // Live RPG parcels from ApiCarto (through the server proxy), debounced on map move.
+  // Falls back to the bundled mock parcels when offline/static.
+  let liveParcelsLayer = null;
+  let rpgDebounce = null;
+  async function loadLiveRpgParcels() {
+    const b = map.getBounds();
+    const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
+    try {
+      const res = await fetch(`/api/rpg/parcels?bbox=${bbox}&_limit=1000`);
+      if (!res.ok) throw new Error("api");
+      const data = await res.json();
+      const feats = (data.features || []).slice(0, 1000); // ApiCarto caps at 1000 anyway
+      if (liveParcelsLayer) cropLayerGroup.removeLayer(liveParcelsLayer);
+      liveParcelsLayer = L.geoJSON(feats, {
+        style: { color: "#f59e0b", weight: 1.5, fillColor: "#f59e0b", fillOpacity: 0.18 },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {};
+          const ilotId = p.id_parcel || p.id_ilot || feature.id;
+          layer.bindPopup(`<div class="map-popup"><div class="popup-tag crop-tag">PARCELLE RPG 2024 (donnée live IGN/ASP)</div><h4>Parcelle ${ilotId}</h4><div class="popup-sub">Culture ${p.code_cultu || "?"} • ${p.surf_parc ? p.surf_parc.toFixed(1) + " ha" : ""}</div></div>`);
+          layer.on("click", () => openParcelSheet(ilotId, { name: `Parcelle RPG ${ilotId}`, props: p }));
+        }
+      });
+      cropLayerGroup.addLayer(liveParcelsLayer);
+    } catch {
+      // offline/static mode: show the bundled mock parcels instead
+      renderMockParcels();
+    }
+  }
+
+  map.on("moveend", () => {
+    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (map.getZoom() < 10) return; // overview below z10 uses the WMS raster
+    clearTimeout(rpgDebounce);
+    rpgDebounce = setTimeout(loadLiveRpgParcels, 600);
+  });
+
+  function renderCropLayer() {
+    cropLayerGroup.clearLayers();
+    if (!document.getElementById("toggleCropLayer").checked) return;
+
+    // 1. Add official IGN nationwide WMS layer (displays all agricultural parcels in France when zoomed in)
+    cropLayerGroup.addLayer(nationalRpgWmsLayer);
+    if (map.getZoom() >= 10) loadLiveRpgParcels();
+
+    // 2. Add detailed interactive parcels with complete rotation history
+    // 2. Live RPG parcelles load at zoom >= 10 (loadLiveRpgParcels); below that the
+    //    nationwide WMS raster covers the overview. Mock parcels are an offline
+    //    fallback only (renderMockParcels, called from loadLiveRpgParcels' catch).
   }
 
   // LAYER 4: Soil Water Status & Moisture Stations (Open-Meteo / Hub'Eau)

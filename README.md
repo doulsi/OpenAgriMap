@@ -37,8 +37,9 @@ Plateforme cartographique collaborative et ouverte dédiée au monde agricole et
 ## ▶️ Lancer l'application
 
 **Mode rapide (statique)** : ouvrez `index.html` dans un navigateur — l'app
-fonctionne hors ligne avec les données d'amorçage, et les nouveaux signalements
-restent locaux.
+fonctionne hors ligne (les parcelles mock ne s'affichent qu'en secours), et les
+nouveaux signalements restent locaux. **Aucun signalement fictif n'est préchargé**
+: la carte démarre vide côté alertes, seules les vraies contributions comptent.
 
 **Mode complet (avec API)** — Node >= 18, aucune dépendance à installer :
 
@@ -76,6 +77,7 @@ le schéma cible PostgreSQL/PostGIS est dans [`server/schema.sql`](server/schema
 ## 🌾 Parcelles : de quelques-unes à toute la France
 
 - **Vue d'ensemble (zoom < 12)** : la couche WMS raster IGN affiche déjà tous les îlots RPG de France.
+- **Zoomé (≥ 10)** : parcelles live. En **mode hors ligne**, les 15 parcelles mock bleues servent de secours.
 - **Zoomé (≥ 10)** : l'app charge automatiquement les **parcelles RPG 2024 live** via `GET /api/rpg/parcels?bbox=...` (proxy ApiCarto IGN `rpg/v2`, cache serveur 10 min, plafond 1000 parcelles/zone) — des milliers de parcelles réelles, pas seulement les 15 mock. Cliquer sur une parcelle orange ouvre sa fiche. Données mises à jour **au clic/zoom** (requête par zone visible), pas un gros téléchargement.
 - Pour **personnaliser** : éditez `CROP_PARCELS` dans `js/mock-parcels.js` (mode hors ligne), ou branchez une autre source dans `PROXY_TARGETS` (`server/server.js`).
 
