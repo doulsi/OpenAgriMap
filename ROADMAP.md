@@ -21,7 +21,7 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 - [ ] Comptes utilisateurs (email/OAuth) et persistance PostGIS — **P1 bloquant**
 - [x] Modération (PATCH statut), dédoublonnage 24h/250m (409), réputation par contributeur — **P2 (v1)**
 - [ ] Réseau de référents agronomes (validation humaine), score de réputation avancé — **P2 (suite)**
-- [ ] PWA installable — **P4**
+- [x] **P4** : PWA installable (manifest + service worker, cache app shell, réseau d'abord pour l'API), géolocalisation GPS du terrain, champ photo — v1
 - [ ] Gamification (niveaux Graine → Jardinier → Maraîcher → Agronome) — **P5**
 
 ## KPIs
