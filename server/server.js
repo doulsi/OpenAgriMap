@@ -42,7 +42,8 @@ const PROXY_TARGETS = {
   openmeteo: "https://api.open-meteo.com/v1/forecast",
   gbif: "https://api.gbif.org/v1/occurrence/search",
   geocode: "https://data.geopf.fr/geocodage/search",
-  nominatim: "https://nominatim.openstreetmap.org/search"
+  nominatim: "https://nominatim.openstreetmap.org/search",
+  apicarto: "https://apicarto.ign.fr/api"
 };
 
 const PROXY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -106,6 +107,23 @@ function createServer({ store, schema } = {}) {
           referenceLeasePriceEURperHa: null, // §3.2 item 2: branché quand la source prix de fermage sera ouverte
           source: "RPG IGN/ASP (Licence Ouverte 2.0) + signalements communautaires ODbL"
         });
+      }
+
+      // RPG live parcels in the current bbox (ApiCarto IGN, Licence Ouverte 2.0).
+      // path after /api/proxy/apicarto/ is forwarded, e.g. /rpg/ilot?codeinsee=49007
+      if (pathname.startsWith("/api/proxy/apicarto/") && req.method === "GET") {
+        const sub = pathname.slice("/api/proxy/apicarto/".length);
+        const cacheKey = `apicarto:${sub}?${url.searchParams.toString()}`;
+        const cached = proxyCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Cache": "HIT" });
+          return res.end(cached.body);
+        }
+        const upstream = await fetch(`${PROXY_TARGETS.apicarto}/${sub}?${url.searchParams.toString()}`);
+        const body = await upstream.text();
+        proxyCache.set(cacheKey, { body, expiresAt: Date.now() + 60 * 60 * 1000 }); // RPG changes yearly: 1h cache
+        res.writeHead(upstream.status, { "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8", "X-Cache": "MISS" });
+        return res.end(body);
       }
 
       // Plan §3.2 item 3: voisinage à risque (pulvérisation / apiculture / élevage)

@@ -73,6 +73,12 @@ de 250 m et 24 h) sont refusés (409).
 La persistance par défaut est un fichier JSON (`data/reports.json`, gitignoré) ;
 le schéma cible PostgreSQL/PostGIS est dans [`server/schema.sql`](server/schema.sql).
 
+## 🌾 Parcelles : de quelques-unes à toute la France
+
+- **Vue d'ensemble (zoom < 12)** : la couche WMS raster IGN affiche déjà tous les îlots RPG de France.
+- **Zoomé (≥ 12)** : l'app charge automatiquement les **îlots RPG live** via ApiCarto IGN (à travers `/api/proxy/apicarto/rpg/ilot?bbox=...`, cache serveur 1 h) pour la zone visible — des milliers de parcelles, pas seulement les 15 mock. Cliquer sur un îlot orange ouvre sa fiche.
+- Pour **personnaliser** : éditez `CROP_PARCELS` dans `js/mock-parcels.js` (mode hors ligne), ou branchez une autre source dans `PROXY_TARGETS` (`server/server.js`).
+
 ## 📱 PWA & mobile (P4)
 
 Servie via `npm start`, l'app est **installable** (manifest + service worker `sw.js`) :

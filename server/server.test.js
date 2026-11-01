@@ -276,6 +276,11 @@ test("§3.2-4 benchmark: /api/benchmark aggregates pressure by aggressor and yie
   assert.equal(far.reportsInTerritory, 0);
 });
 
+test("apicarto passthrough is routed and cached (no network: unknown upstream is fine, routing is what matters)", () => {
+  const { PROXY_TARGETS } = require("./server");
+  assert.ok(PROXY_TARGETS.apicarto.includes("apicarto.ign.fr"));
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
