@@ -205,3 +205,18 @@ test("PATCH /api/reports/:id moderates a report and reputation counts confirmed 
   const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Jean-Paul D.")}/reputation`)).json();
   assert.equal(rep.confirmedReports, 1);
 });
+
+test("gamification P5: reputation endpoint returns the level (Graine -> Jardinier -> Maraîcher -> Agronome)", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+  const { levelFor } = require("./gamification");
+  assert.equal(levelFor(0).name, "Graine");
+  assert.equal(levelFor(3).name, "Jardinier");
+  assert.equal(levelFor(10).name, "Maraîcher");
+  assert.equal(levelFor(25).name, "Agronome");
+  assert.equal(levelFor(25).next, null);
+  assert.equal(levelFor(1).next.name, "Jardinier");
+
+  const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Nobody")}/reputation`)).json();
+  assert.equal(rep.level.name, "Graine");
+});

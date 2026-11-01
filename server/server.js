@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const { validateObservation, loadSchema } = require("./validator");
 const { ReportStore } = require("./store");
+const { levelFor } = require("./gamification");
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -156,9 +157,11 @@ function createServer({ store, schema } = {}) {
       const repMatch = pathname.match(/^\/api\/reporters\/([^/]+)\/reputation$/);
       if (repMatch && req.method === "GET") {
         const name = decodeURIComponent(repMatch[1]);
+        const confirmed = reportStore.reputation(name);
         return sendJson(res, 200, {
           displayName: name,
-          confirmedReports: reportStore.reputation(name)
+          confirmedReports: confirmed,
+          level: levelFor(confirmed)
         });
       }
 

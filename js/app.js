@@ -768,6 +768,22 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("closeSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
   document.getElementById("confirmSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
 
+  // P5 gamification: live level badge for the entered display name
+  const levelBadge = document.getElementById("reporterLevelBadge");
+  async function refreshLevelBadge() {
+    const name = document.getElementById("reportDisplayName").value.trim();
+    if (!name || !levelBadge) return;
+    try {
+      const res = await fetch(`/api/reporters/${encodeURIComponent(name)}/reputation`);
+      if (res.ok) {
+        const data = await res.json();
+        const lvl = data.level || { icon: "🌱", name: "Graine" };
+        levelBadge.textContent = `${lvl.icon} ${lvl.name}`;
+      }
+    } catch { /* offline: keep default badge */ }
+  }
+  document.getElementById("reportDisplayName").addEventListener("change", refreshLevelBadge);
+
   document.getElementById("useMyMapLocationBtn").addEventListener("click", () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -860,6 +876,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast(persisted
       ? `Signalement enregistré avec succès dans l'Open Data agricole ! Alerte de proximité actualisée.`
       : `Signalement enregistré localement (mode hors ligne) : l'API n'est pas joignable.`, persisted ? "success" : "info");
+    refreshLevelBadge();
   });
 
   // 10. TOAST NOTIFICATION HELPER
