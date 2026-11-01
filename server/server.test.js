@@ -136,3 +136,115 @@ test("GET /api/proxy/:source rejects unknown sources (404)", async (t) => {
   const res = await fetch(`${base}/api/proxy/unknown?x=1`);
   assert.equal(res.status, 404);
 });
+
+
+test("proxy routes the five P3 upstream sources (soilgrids, openmeteo, gbif, geocode, nominatim)", () => {
+  const { PROXY_TARGETS } = require("./server");
+  for (const src of ["soilgrids", "openmeteo", "gbif", "geocode", "nominatim"]) {
+    assert.ok(PROXY_TARGETS[src], `missing proxy source ${src}`);
+  }
+});
+
+test("P6: /api/openapi.json serves a valid OpenAPI spec and /api/export.geojson exports community reports as ODbL GeoJSON", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  });
+
+  const spec = await (await fetch(`${base}/api/openapi.json`)).json();
+  assert.equal(spec.openapi, "3.0.3");
+  assert.ok(spec.paths["/api/reports"] && spec.paths["/api/export.geojson"]);
+
+  const res = await fetch(`${base}/api/export.geojson`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /geo\+json/);
+  const fc = await res.json();
+  assert.equal(fc.type, "FeatureCollection");
+  assert.match(fc.license, /odbl/);
+  const mine = fc.features.find((f) => f.id && f.properties.reporter === "Jean-Paul D.");
+  assert.ok(mine, "exported feature for the submitted report");
+  assert.deepEqual(mine.geometry.coordinates, [VALID_OBSERVATION.location.lng, VALID_OBSERVATION.location.lat]);
+  assert.equal(mine.properties.license, "ODbL-1.0");
+  // seeded (non-community) reports must NOT be exported
+  assert.ok(fc.features.every((f) => f.properties.status === "pending_moderation" || f.id.startsWith("rep-")));
+});
+
+test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const post = () => fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  });
+  const first = await post();
+  assert.equal(first.status, 201);
+  const second = await post();
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.ok(body.existingId);
+
+  // same place but different crop => not a duplicate
+  const other = { ...VALID_OBSERVATION, crop: "Pomme de terre" };
+  const third = await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(other)
+  });
+  assert.equal(third.status, 201);
+});
+
+test("PATCH /api/reports/:id moderates a report and reputation counts confirmed ones", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const created = await (await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  })).json();
+
+  const bad = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "bogus" })
+  });
+  assert.equal(bad.status, 422);
+
+  const missing = await fetch(`${base}/api/reports/rep-nope`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "confirmed" })
+  });
+  assert.equal(missing.status, 404);
+
+  const ok = await (await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "confirmed" })
+  })).json();
+  assert.equal(ok.status, "confirmed");
+
+  const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Jean-Paul D.")}/reputation`)).json();
+  assert.equal(rep.confirmedReports, 1);
+});
+
+test("gamification P5: reputation endpoint returns the level (Graine -> Jardinier -> Maraîcher -> Agronome)", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+  const { levelFor } = require("./gamification");
+  assert.equal(levelFor(0).name, "Graine");
+  assert.equal(levelFor(3).name, "Jardinier");
+  assert.equal(levelFor(10).name, "Maraîcher");
+  assert.equal(levelFor(25).name, "Agronome");
+  assert.equal(levelFor(25).next, null);
+  assert.equal(levelFor(1).next.name, "Jardinier");
+
+  const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Nobody")}/reputation`)).json();
+  assert.equal(rep.level.name, "Graine");
+});

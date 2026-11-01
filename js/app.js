@@ -768,11 +768,44 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("closeSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
   document.getElementById("confirmSourcesModalBtn").addEventListener("click", () => sourcesModal.classList.add("hidden"));
 
+  // P5 gamification: live level badge for the entered display name
+  const levelBadge = document.getElementById("reporterLevelBadge");
+  async function refreshLevelBadge() {
+    const name = document.getElementById("reportDisplayName").value.trim();
+    if (!name || !levelBadge) return;
+    try {
+      const res = await fetch(`/api/reporters/${encodeURIComponent(name)}/reputation`);
+      if (res.ok) {
+        const data = await res.json();
+        const lvl = data.level || { icon: "🌱", name: "Graine" };
+        levelBadge.textContent = `${lvl.icon} ${lvl.name}`;
+      }
+    } catch { /* offline: keep default badge */ }
+  }
+  document.getElementById("reportDisplayName").addEventListener("change", refreshLevelBadge);
+
   document.getElementById("useMyMapLocationBtn").addEventListener("click", () => {
-    const c = map.getCenter();
-    document.getElementById("reportLatitude").value = c.lat.toFixed(4);
-    document.getElementById("reportLongitude").value = c.lng.toFixed(4);
-    showToast("Coordonnées de la vue cartographique insérées.", "info");
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          document.getElementById("reportLatitude").value = pos.coords.latitude.toFixed(4);
+          document.getElementById("reportLongitude").value = pos.coords.longitude.toFixed(4);
+          showToast("Position GPS du terrain insérée.", "success");
+        },
+        () => {
+          const c = map.getCenter();
+          document.getElementById("reportLatitude").value = c.lat.toFixed(4);
+          document.getElementById("reportLongitude").value = c.lng.toFixed(4);
+          showToast("GPS indisponible, coordonnées de la vue cartographique insérées.", "info");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    } else {
+      const c = map.getCenter();
+      document.getElementById("reportLatitude").value = c.lat.toFixed(4);
+      document.getElementById("reportLongitude").value = c.lng.toFixed(4);
+      showToast("Coordonnées de la vue cartographique insérées.", "info");
+    }
   });
 
   // Form Submission
@@ -786,6 +819,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const reporterRole = document.getElementById("reportUserRole").value;
     const reporterName = document.getElementById("reportDisplayName").value.trim();
     const notes = document.getElementById("reportNotes").value;
+    const photoInput = document.getElementById("reportPhoto");
+    const photoFile = photoInput && photoInput.files && photoInput.files[0];
+    let photoUrl = "";
+    if (photoFile) {
+      photoUrl = URL.createObjectURL(photoFile); // local preview only; real upload needs P1 accounts/storage
+    }
 
     if (!reporterName) {
       showToast("Un nom d'affichage est requis : les signalements anonymes sont refusés.", "error");
@@ -799,6 +838,7 @@ document.addEventListener("DOMContentLoaded", () => {
       location: { lat: parseFloat(lat), lng: parseFloat(lng) },
       observedAt: new Date().toISOString(),
       notes,
+      ...(photoUrl ? { photoUrl } : {}),
       reporter: { role: reporterRole, displayName: reporterName }
     };
 
@@ -836,6 +876,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast(persisted
       ? `Signalement enregistré avec succès dans l'Open Data agricole ! Alerte de proximité actualisée.`
       : `Signalement enregistré localement (mode hors ligne) : l'API n'est pas joignable.`, persisted ? "success" : "info");
+    refreshLevelBadge();
   });
 
   // 10. TOAST NOTIFICATION HELPER

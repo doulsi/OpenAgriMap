@@ -1,0 +1,85 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "OpenAgriMap France API",
+    "version": "0.2.0",
+    "description": "API publique et ouverte d'OpenAgriMap France. Les signalements contribués sont publiés sous licence ODbL (voir /api/export.geojson). Schéma des observations : schema/observation.schema.json.",
+    "license": { "name": "ODbL-1.0 (données) / MIT (code)", "url": "https://opendatacommons.org/licenses/odbl/1-0/" }
+  },
+  "servers": [{ "url": "http://127.0.0.1:8080" }],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "État de santé de l'API",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "reports": { "type": "integer" } } } } } } }
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "summary": "Liste des signalements (filtre optionnel par bbox)",
+        "parameters": [
+          { "name": "bbox", "in": "query", "description": "minLng,minLat,maxLng,maxLat", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Liste des signalements" } }
+      },
+      "post": {
+        "summary": "Crée un signalement (validé contre schema/observation.schema.json ; signalements anonymes refusés)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Observation" } } } },
+        "responses": {
+          "201": { "description": "Signalement créé (statut pending_moderation)" },
+          "400": { "description": "JSON invalide" },
+          "409": { "description": "Doublon (même contributeur, culture, bioagresseur, à moins de 250 m et 24 h)" },
+          "422": { "description": "Ne respecte pas le schéma (ex : anonyme)" }
+        }
+      }
+    },
+    "/api/reports/{id}": {
+      "patch": {
+        "summary": "Modération d'un signalement (prototype local ; à restreindre avec les comptes P1)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "enum": ["pending_moderation", "confirmed", "rejected"] } } } } } },
+        "responses": { "200": { "description": "Signalement mis à jour" }, "404": { "description": "Inconnu" }, "422": { "description": "Statut invalide" } }
+      }
+    },
+    "/api/reporters/{name}/reputation": {
+      "get": {
+        "summary": "Réputation + niveau de gamification (Graine → Jardinier → Maraîcher → Agronome) d'un contributeur",
+        "parameters": [{ "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "confirmedReports + level" } }
+      }
+    },
+    "/api/export.geojson": {
+      "get": {
+        "summary": "Export open data complet des signalements communautaires (GeoJSON FeatureCollection, ODbL)",
+        "responses": { "200": { "description": "FeatureCollection GeoJSON", "content": { "application/geo+json": {} } } }
+      }
+    },
+    "/api/proxy/{source}": {
+      "get": {
+        "summary": "Proxy de cache serveur (10 min) vers les API tierces : soilgrids, openmeteo, gbif, geocode, nominatim",
+        "parameters": [{ "name": "source", "in": "path", "required": true, "schema": { "type": "string", "enum": ["soilgrids", "openmeteo", "gbif", "geocode", "nominatim"] } }],
+        "responses": { "200": { "description": "Réponse amont (X-Cache: HIT/MISS)" }, "404": { "description": "Source inconnue" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Observation": {
+        "type": "object",
+        "required": ["bioaggressor", "severity", "crop", "location", "observedAt", "reporter"],
+        "properties": {
+          "bioaggressor": { "type": "string", "enum": ["mildew", "rust", "colorado_beetle", "aphids", "powdery_mildew", "box_moth", "other"] },
+          "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+          "crop": { "type": "string", "minLength": 2, "maxLength": 120 },
+          "variety": { "type": "string", "maxLength": 120 },
+          "stage": { "type": "string", "maxLength": 80 },
+          "location": { "type": "object", "required": ["lat", "lng"], "properties": { "lat": { "type": "number", "minimum": -90, "maximum": 90 }, "lng": { "type": "number", "minimum": -180, "maximum": 180 } } },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "notes": { "type": "string", "maxLength": 2000 },
+          "photoUrl": { "type": "string", "maxLength": 500 },
+          "reporter": { "type": "object", "required": ["role", "displayName"], "properties": { "role": { "type": "string", "enum": ["gardener", "farmer", "advisor", "researcher", "other"] }, "displayName": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Obligatoire : les signalements anonymes sont refusés" } } }
+        }
+      }
+    }
+  }
+}

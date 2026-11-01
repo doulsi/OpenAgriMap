@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const { validateObservation, loadSchema } = require("./validator");
 const { ReportStore } = require("./store");
+const { levelFor } = require("./gamification");
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -35,8 +36,11 @@ const MIME = {
 };
 
 const PROXY_TARGETS = {
-  soilgrids: "https://rest.isric.org/soilgrids/v2.0/properties/get",
-  openmeteo: "https://api.open-meteo.com/v1/forecast"
+  soilgrids: "https://rest.isric.org/soilgrids/v2.0/properties/query",
+  openmeteo: "https://api.open-meteo.com/v1/forecast",
+  gbif: "https://api.gbif.org/v1/occurrence/search",
+  geocode: "https://data.geopf.fr/geocodage/search",
+  nominatim: "https://nominatim.openstreetmap.org/search"
 };
 
 const PROXY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -78,6 +82,49 @@ function createServer({ store, schema } = {}) {
     const pathname = url.pathname;
 
     try {
+      // P6 open by default: public API documentation (OpenAPI 3, static)
+      if (pathname === "/api/openapi.json" && req.method === "GET") {
+        const spec = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "docs", "openapi.json"), "utf8"));
+        return sendJson(res, 200, spec);
+      }
+
+      // P6: full open data export of community reports (ODbL), GeoJSON FeatureCollection
+      if (pathname === "/api/export.geojson" && req.method === "GET") {
+        const features = reportStore.list()
+          .filter((r) => r.origin === "community")
+          .map((r) => ({
+            type: "Feature",
+            id: r.id,
+            geometry: { type: "Point", coordinates: [r.location.lng, r.location.lat] },
+            properties: {
+              bioaggressor: r.bioaggressor,
+              severity: r.severity,
+              crop: r.crop,
+              variety: r.variety || null,
+              stage: r.stage || null,
+              observedAt: r.observedAt,
+              submittedAt: r.submittedAt,
+              status: r.status,
+              notes: r.notes || "",
+              reporterRole: r.reporter.role,
+              reporter: r.reporter.displayName,
+              license: "ODbL-1.0"
+            }
+          }));
+        res.writeHead(200, {
+          "Content-Type": "application/geo+json; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="openagrimap-reports.geojson"',
+          "Cache-Control": "no-store"
+        });
+        return res.end(JSON.stringify({
+          type: "FeatureCollection",
+          license: "https://opendatacommons.org/licenses/odbl/1-0/",
+          attribution: "OpenAgriMap France contributors",
+          generatedAt: new Date().toISOString(),
+          features
+        }, null, 2));
+      }
+
       if (pathname === "/api/health" && req.method === "GET") {
         return sendJson(res, 200, { status: "ok", reports: reportStore.list().length });
       }
@@ -114,8 +161,51 @@ function createServer({ store, schema } = {}) {
           });
         }
 
-        const record = reportStore.add(payload);
+        let record;
+        try {
+          record = reportStore.add(payload);
+        } catch (err) {
+          if (err.code === "DUPLICATE") {
+            return sendJson(res, 409, {
+              error: "duplicate observation (redundant signalement within 24h / 250m)",
+              existingId: err.existingId
+            });
+          }
+          throw err;
+        }
         return sendJson(res, 201, record);
+      }
+
+      // P2 moderation: PATCH /api/reports/:id  {"status": "confirmed"|"rejected"|"pending_moderation"}
+      const moderationMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
+      if (moderationMatch && req.method === "PATCH") {
+        let payload;
+        try {
+          payload = JSON.parse(await readBody(req));
+        } catch {
+          return sendJson(res, 400, { error: "invalid JSON body" });
+        }
+        let record;
+        try {
+          record = reportStore.setStatus(moderationMatch[1], payload.status);
+        } catch (err) {
+          if (err.code === "BAD_STATUS") return sendJson(res, 422, { error: err.message });
+          throw err;
+        }
+        if (!record) return sendJson(res, 404, { error: "report not found" });
+        return sendJson(res, 200, record);
+      }
+
+      // P2 reputation: GET /api/reporters/:name/reputation
+      const repMatch = pathname.match(/^\/api\/reporters\/([^/]+)\/reputation$/);
+      if (repMatch && req.method === "GET") {
+        const name = decodeURIComponent(repMatch[1]);
+        const confirmed = reportStore.reputation(name);
+        return sendJson(res, 200, {
+          displayName: name,
+          confirmedReports: confirmed,
+          level: levelFor(confirmed)
+        });
       }
 
       if (pathname.startsWith("/api/proxy/") && req.method === "GET") {
@@ -130,7 +220,9 @@ function createServer({ store, schema } = {}) {
           return res.end(cached.body);
         }
 
-        const upstream = await fetch(`${target}?${url.searchParams.toString()}`);
+        const headers = {};
+        if (source === "nominatim") headers["User-Agent"] = "OpenAgriMap/0.2 (open source agriculture map)";
+        const upstream = await fetch(`${target}?${url.searchParams.toString()}`, { headers });
         const body = await upstream.text();
         proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
         res.writeHead(upstream.status, {
@@ -165,4 +257,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer };
+module.exports = { createServer, PROXY_TARGETS };

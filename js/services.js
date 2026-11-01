@@ -184,7 +184,7 @@ const Services = {
     if (!query || query.trim().length < 2) return [];
     // Try IGN first (optimized for France)
     try {
-      const url = `https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(query)}&limit=4`;
+      const url = `/api/proxy/geocode?q=${encodeURIComponent(query)}&limit=4`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("Erreur service géocodage");
       const data = await response.json();
@@ -202,7 +202,7 @@ const Services = {
     }
     // Fallback: Nominatim OpenStreetMap (world-wide)
     try {
-      const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+      const nomUrl = `/api/proxy/nominatim?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
       const res = await fetch(nomUrl, { headers: { 'Accept-Language': 'fr' } });
       if (!res.ok) throw new Error("Nominatim error");
       const items = await res.json();
@@ -232,7 +232,7 @@ const Services = {
    */
   async fetchLiveSoilWaterStatus(lat, lon) {
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current=temperature_2m,relative_humidity_2m,rain,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm&timezone=auto`;
+      const url = `/api/proxy/openmeteo?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current=temperature_2m,relative_humidity_2m,rain,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm&timezone=auto`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Soil moisture API error");
       const data = await res.json();
@@ -333,7 +333,7 @@ const Services = {
     }
 
     try {
-      const url = `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${lon}&lat=${lat}&property=phh2o&property=clay&property=sand&property=silt&depth=0-5cm&value=mean`;
+      const url = `/api/proxy/soilgrids?lon=${lon}&lat=${lat}&property=phh2o&property=clay&property=sand&property=silt&depth=0-5cm&value=mean`;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
@@ -548,7 +548,7 @@ const Services = {
       }
 
       const countryParam = countryCode ? `&country=${countryCode}` : "";
-      const url = `https://api.gbif.org/v1/occurrence/search${countryParam}&hasCoordinate=true&decimalLatitude=${minLat},${maxLat}&decimalLongitude=${minLng},${maxLng}${taxonParam}&limit=40`;
+      const url = `/api/proxy/gbif${countryParam}&hasCoordinate=true&decimalLatitude=${minLat},${maxLat}&decimalLongitude=${minLng},${maxLng}${taxonParam}&limit=40`;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -601,7 +601,7 @@ const Services = {
    */
   async fetchLiveAgroWeather(lat, lon) {
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current=temperature_2m,relative_humidity_2m,precipitation&forecast_days=1`;
+      const url = `/api/proxy/openmeteo?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current=temperature_2m,relative_humidity_2m,precipitation&forecast_days=1`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Meteo API error");
       const data = await res.json();

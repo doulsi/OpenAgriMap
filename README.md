@@ -55,8 +55,15 @@ L'API (`server/server.js`, zéro dépendance) expose :
   (culture, variété, bioagresseur, stade, notes, GPS, date, nom d'affichage ;
   **les signalements anonymes sont refusés** — 422)
 - `GET /api/proxy/:source/*` — proxy de cache serveur pour les appels aux API
-  tierces (ISRIC SoilGrids, Open-Meteo), afin de ne pas exposer le navigateur
+  tierces (ISRIC SoilGrids, Open-Meteo, GBIF, géocodage IGN, Nominatim), afin de ne pas exposer le navigateur
   aux limites de débit
+- `PATCH /api/reports/:id` — modération (statut `pending_moderation` / `confirmed` / `rejected`)
+- `GET /api/reporters/:name/reputation` — score de réputation + niveau de gamification
+- `GET /api/export.geojson` — **export open data** des signalements communautaires (GeoJSON, ODbL)
+- `GET /api/openapi.json` — **documentation publique de l'API** (OpenAPI 3, voir `docs/openapi.json`)
+
+Les signalements en doublon (même contributeur, culture et bioagresseur à moins
+de 250 m et 24 h) sont refusés (409).
 
 La persistance par défaut est un fichier JSON (`data/reports.json`, gitignoré),
 en attendant PostgreSQL/PostGIS + comptes utilisateurs (voir [ROADMAP.md](ROADMAP.md)).
