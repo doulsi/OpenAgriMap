@@ -182,7 +182,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 1. Render seeded national occurrences
-    if (window.BIODIVERSITY_POINTS) {
+    // NB: top-level `const` in mock-parcels.js does NOT attach to window — guard with typeof, not window.X
+    if (typeof BIODIVERSITY_POINTS !== "undefined") {
       BIODIVERSITY_POINTS.forEach(pt => {
         if (state.bioFilter !== "all" && pt.category !== state.bioFilter) return;
         addBioMarker(pt);
@@ -345,7 +346,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch { /* offline */ }
     } catch {
       // static/offline mode or live ilot: fall back to mock data or the ApiCarto properties
-      let p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
+      let p = (typeof CROP_PARCELS !== "undefined" ? CROP_PARCELS : []).find(x => x.id === parcelId);
       if (!p && liveParcel) {
         p = { id: parcelId, name: liveParcel.name, farm: "Exploitation (RPG)", region: "—", areaHa: liveParcel.props.surf_parc || liveParcel.props.surf_ilot || null, currentCrop: cultureLabel(liveParcel.props.code_cultu || liveParcel.props.code_culture), variety: "", cropCode: liveParcel.props.code_cultu || "", history: [] };
       }
@@ -473,7 +474,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggle = document.getElementById("toggleWaterLayer");
     if (toggle && !toggle.checked) return;
 
-    if (window.SOIL_WATER_STATIONS) {
+    // NB: top-level `const` in mock-parcels.js does NOT attach to window — guard with typeof, not window.X
+    if (typeof SOIL_WATER_STATIONS !== "undefined") {
       // Work on a copy: live enrichment must not mutate the shared seed data
       // (statusLabel used to accumulate " (live)" on every render).
       const stations = SOIL_WATER_STATIONS.map(st => ({ ...st }));
