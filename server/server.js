@@ -432,9 +432,15 @@ function createServer({ store, schema } = {}) {
 
         const headers = {};
         if (source === "nominatim") headers["User-Agent"] = "OpenAgriMap/0.2 (open source agriculture map)";
-        const upstream = await fetch(`${target}?${url.searchParams.toString()}`, { headers });
+        let upstream = await fetch(`${target}?${url.searchParams.toString()}`, { headers });
+        // GBIF rate-limits aggressively (429): one retry after a short backoff, then cache errors too (short TTL)
+        if (upstream.status === 429) {
+          await new Promise((r) => setTimeout(r, 1200));
+          upstream = await fetch(`${target}?${url.searchParams.toString()}`, { headers });
+        }
         const body = await upstream.text();
-        proxyCache.set(cacheKey, { body, expiresAt: Date.now() + PROXY_CACHE_TTL_MS });
+        const ttl = upstream.status === 200 ? PROXY_CACHE_TTL_MS : 60 * 1000; // cache errors only 1 min
+        proxyCache.set(cacheKey, { body, expiresAt: Date.now() + ttl });
         res.writeHead(upstream.status, {
           "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
           "X-Cache": "MISS"

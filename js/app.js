@@ -22,8 +22,32 @@ document.addEventListener("DOMContentLoaded", () => {
     center: { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng }
   };
 
-  // Outbreak engine starts EMPTY: only real community reports count (mock seeds removed).
+  // Outbreak engine starts EMPTY of mocks; real reports are loaded from the API.
   const outbreakEngine = new OutbreakEngine([]);
+
+  // Load community reports from the API for the current viewport (debounced on move).
+  let reportsDebounce = null;
+  async function loadReportsFromApi() {
+    try {
+      const b = map.getBounds();
+      const bbox = `${b.getWest().toFixed(3)},${b.getSouth().toFixed(3)},${b.getEast().toFixed(3)},${b.getNorth().toFixed(3)}`;
+      const res = await fetch(`/api/reports?bbox=${bbox}`);
+      if (!res.ok) throw new Error("api");
+      const data = await res.json();
+      outbreakEngine.reports = (data.reports || []).map(r => ({
+        id: r.id, disease: r.bioaggressor, severity: r.severity, crop: r.crop,
+        reporter: r.reporter.displayName, reporterRole: r.reporter.role,
+        lat: r.location.lat, lng: r.location.lng,
+        date: new Date(r.observedAt).toLocaleString("fr-FR"),
+        notes: r.notes || "", status: r.status
+      }));
+      outbreakEngine.notify();
+    } catch { /* offline: keep local reports */ }
+  }
+  map.on("moveend", () => {
+    clearTimeout(reportsDebounce);
+    reportsDebounce = setTimeout(loadReportsFromApi, 500);
+  });
 
   // 1. INITIALIZE LEAFLET MAP
   const map = L.map("map", {
@@ -1140,6 +1164,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderBiodiversityLayer();
   renderCropLayer();
   renderWaterLayer();
+  loadReportsFromApi();
   outbreakEngine.notify();
   // Initial soil inspector availability check
   updateSoilInspectorAvailability(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng);
