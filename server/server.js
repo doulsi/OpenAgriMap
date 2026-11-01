@@ -90,6 +90,23 @@ function createServer({ store, schema } = {}) {
     const pathname = url.pathname;
 
     try {
+      // Plan §3.5 use case 1: fiche d'identité d'une parcelle (historique + signalements + prix de référence)
+      const parcelMatch = pathname.match(/^\/api\/parcels\/([^/]+)$/);
+      if (parcelMatch && req.method === "GET") {
+        const parcel = reportStore.getParcel(decodeURIComponent(parcelMatch[1]));
+        if (!parcel) return sendJson(res, 404, { error: "parcel not found" });
+        const reports = reportStore.reportsForParcel(parcel).map((r) => ({
+          id: r.id, bioaggressor: r.bioaggressor, severity: r.severity, crop: r.crop,
+          observedAt: r.observedAt, status: r.status, reporter: r.reporter.displayName, notes: r.notes || ""
+        }));
+        return sendJson(res, 200, {
+          ...parcel,
+          recentReports: reports,
+          referenceLeasePriceEURperHa: null, // §3.2 item 2: branché quand la source prix de fermage sera ouverte
+          source: "RPG IGN/ASP (Licence Ouverte 2.0) + signalements communautaires ODbL"
+        });
+      }
+
       // P1 accounts
       if (pathname === "/api/auth/register" && req.method === "POST") {
         let payload;

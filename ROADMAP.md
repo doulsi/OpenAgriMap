@@ -28,6 +28,13 @@ Issue du plan produit & business v2. Priorités P1-P7 : voir les issues GitHub
 - [x] **P5** : niveaux Graine 🌱 → Jardinier 🪴 → Maraîcher 🚜 → Agronome 🎓 (signalements confirmés), badge live dans le formulaire — v1
 - [ ] Badges & quêtes saisonnières — **P5 (suite)**
 
+## Valeur pour les agriculteurs (§3.2/§3.5 du plan)
+
+- [x] **Cas d'usage 1 — fiche d'identité de parcelle** : `GET /api/parcels/:id` (assolement, culture en cours, signalements contenus dans le polygone) + panneau latéral au clic sur la parcelle
+- [ ] Prix réels du foncier/fermage géolocalisés (§3.2 item 2) — **nécessite une source ouverte ; décision à prendre**
+- [ ] Voisinage à risque (éleveurs/apiculteurs < 3 km) (§3.2 item 3)
+- [ ] Benchmark de territoire (rendements/coûts à 10 km) (§3.2 item 4)
+
 ## KPIs
 
 Signalements/mois actifs, taux de récurrence des contributeurs, couverture

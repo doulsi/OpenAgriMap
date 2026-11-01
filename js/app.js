@@ -181,6 +181,65 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // LAYER 3: Crop Parcels (RPG style)
+  // Plan §3.5 use case 1: fiche d'identité de parcelle (side panel)
+  async function openParcelSheet(parcelId) {
+    let sheet = document.getElementById("parcelSheet");
+    if (!sheet) {
+      sheet = document.createElement("aside");
+      sheet.id = "parcelSheet";
+      sheet.className = "sidebar parcel-sheet";
+      document.querySelector(".app-container").appendChild(sheet);
+    }
+    sheet.innerHTML = `<div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité de parcelle</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div><p>Chargement…</p>`;
+    sheet.style.display = "block";
+    if (window.lucide) lucide.createIcons();
+    document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+
+    try {
+      const res = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}`);
+      if (!res.ok) throw new Error("API");
+      const p = await res.json();
+      const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
+      const reportsRows = (p.recentReports || []).map(r => `<tr><td>${new Date(r.observedAt).toLocaleDateString("fr-FR")}</td><td>${r.bioaggressor}</td><td><span class="badge-sev-${r.severity}">${r.severity}</span></td><td>${r.reporter}</td></tr>`).join("") || `<tr><td colspan="4">Aucun signalement communautaire sur cette parcelle.</td></tr>`;
+      sheet.innerHTML = `
+        <div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div>
+        <div class="alert-banner-card">
+          <h2 class="alert-headline" style="font-size:1.1rem">${p.name}</h2>
+          <p class="alert-description">${p.farm} (${p.region}) • ${p.areaHa} ha ${p.organicCertified ? '• <span class="badge-bio">BIO 🌿</span>' : ""}</p>
+          <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop} — variété <em>${p.variety}</em> (code ${p.cropCode})</p>
+          <p class="alert-description"><strong>Prix de référence du fermage :</strong> ${p.referenceLeasePriceEURperHa ? p.referenceLeasePriceEURperHa + " €/ha/an" : "donnée non disponible (source à brancher, plan §3.2 item 2)"}</p>
+        </div>
+        <section class="layers-manager-section">
+          <div class="section-title-row"><h3>Historique d'assolement</h3></div>
+          <table class="popup-history-table"><thead><tr><th>Année</th><th>Culture</th><th>Obs.</th></tr></thead><tbody>${historyRows}</tbody></table>
+        </section>
+        <section class="layers-manager-section">
+          <div class="section-title-row"><h3>Signalements sur la parcelle (${(p.recentReports || []).length})</h3></div>
+          <table class="popup-history-table"><thead><tr><th>Date</th><th>Bioagresseur</th><th>Sévérité</th><th>Observateur</th></tr></thead><tbody>${reportsRows}</tbody></table>
+          <p class="alert-description" style="margin-top:8px;font-size:0.75rem">Source : ${p.source}</p>
+        </section>`;
+      if (window.lucide) lucide.createIcons();
+      document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+    } catch {
+      // static/offline mode: fall back to the local mock data
+      const p = (window.CROP_PARCELS || []).find(x => x.id === parcelId);
+      if (p) {
+        const historyRows = (p.history || []).map(h => `<tr><td><strong>${h.year}</strong></td><td>${h.crop}</td><td>${h.yield || h.status || ""}</td></tr>`).join("");
+        sheet.innerHTML = `
+          <div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div>
+          <div class="alert-banner-card">
+            <h2 class="alert-headline" style="font-size:1.1rem">${p.name}</h2>
+            <p class="alert-description">${p.farm} (${p.region}) • ${p.areaHa} ha</p>
+            <p class="alert-description"><strong>Culture en cours :</strong> ${p.currentCrop} — <em>${p.variety}</em></p>
+          </div>
+          <section class="layers-manager-section"><div class="section-title-row"><h3>Historique d'assolement (mode hors ligne)</h3></div>
+          <table class="popup-history-table"><thead><tr><th>Année</th><th>Culture</th><th>Obs.</th></tr></thead><tbody>${historyRows}</tbody></table></section>`;
+        if (window.lucide) lucide.createIcons();
+        document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
+      }
+    }
+  }
+
   function renderCropLayer() {
     cropLayerGroup.clearLayers();
     if (!document.getElementById("toggleCropLayer").checked) return;
@@ -205,6 +264,8 @@ document.addEventListener("DOMContentLoaded", () => {
           <td>${h.yield || h.status}</td>
         </tr>
       `).join("");
+
+      polygon.on("click", () => openParcelSheet(parcel.id));
 
       polygon.bindPopup(`
         <div class="map-popup map-popup-lg">

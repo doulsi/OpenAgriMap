@@ -222,6 +222,29 @@ test("P1 accounts: register/login/me/logout + authenticated report carries userI
   assert.equal(afterLogout.status, 401);
 });
 
+test("§3.5 fiche parcelle: GET /api/parcels/:id returns history + contained community reports, 404 unknown", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const unknown = await fetch(`${base}/api/parcels/RPG-NOPE`);
+  assert.equal(unknown.status, 404);
+
+  const parcel = await (await fetch(`${base}/api/parcels/RPG-FR-001`)).json();
+  assert.equal(parcel.id, "RPG-FR-001");
+  assert.ok(Array.isArray(parcel.history) && parcel.history.length > 0);
+  assert.ok(Array.isArray(parcel.recentReports));
+  assert.equal(parcel.referenceLeasePriceEURperHa, null);
+  assert.match(parcel.source, /ODbL/);
+
+  // submit a report inside RPG-FR-001's polygon and check it appears in recentReports
+  const inside = { ...VALID_OBSERVATION, location: { lat: 47.246, lng: -0.01 } };
+  await fetch(`${base}/api/reports`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(inside)
+  });
+  const parcel2 = await (await fetch(`${base}/api/parcels/RPG-FR-001`)).json();
+  assert.ok(parcel2.recentReports.some((r) => r.bioaggressor === "mildew" && r.reporter === "Jean-Paul D."));
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());
