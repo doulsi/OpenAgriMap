@@ -29,9 +29,15 @@ class ReportStore {
   load() {
     try {
       const raw = fs.readFileSync(this.dataFile, "utf8");
-      this.reports = JSON.parse(raw);
+      const data = JSON.parse(raw);
+      // support both legacy (array of reports) and current {reports, users, sessions} formats
+      this.reports = Array.isArray(data) ? data : (data.reports || []);
+      this.users = Array.isArray(data) ? [] : (data.users || []);
+      this.sessions = Array.isArray(data) ? [] : (data.sessions || []);
     } catch (err) {
       this.reports = seedReports().map((r) => this.normalizeSeed(r));
+      this.users = [];
+      this.sessions = [];
       this.persist();
     }
     this.nextId = this.reports.reduce((max, r) => {
@@ -57,7 +63,7 @@ class ReportStore {
   persist() {
     fs.mkdirSync(path.dirname(this.dataFile), { recursive: true });
     const tmp = this.dataFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(this.reports, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify({ reports: this.reports, users: this.users || [], sessions: this.sessions || [] }, null, 2));
     fs.renameSync(tmp, this.dataFile);
   }
 
@@ -65,7 +71,7 @@ class ReportStore {
     return this.reports;
   }
 
-  add(observation) {
+  add(observation, user = null) {
     const duplicate = this.findDuplicate(observation);
     if (duplicate) {
       const err = new Error("duplicate observation: an identical report was submitted within the last 24h");
@@ -78,7 +84,8 @@ class ReportStore {
       ...observation,
       submittedAt: new Date().toISOString(),
       status: "pending_moderation",
-      origin: "community"
+      origin: "community",
+      ...(user ? { userId: user.id } : {})
     };
     this.reports.unshift(record);
     this.persist();

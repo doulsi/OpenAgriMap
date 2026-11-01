@@ -173,6 +173,55 @@ test("P6: /api/openapi.json serves a valid OpenAPI spec and /api/export.geojson 
   assert.ok(fc.features.every((f) => f.properties.status === "pending_moderation" || f.id.startsWith("rep-")));
 });
 
+test("P1 accounts: register/login/me/logout + authenticated report carries userId", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const bad = await fetch(`${base}/api/auth/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "not-an-email", password: "short", displayName: "" })
+  });
+  assert.equal(bad.status, 422);
+
+  const reg = await (await fetch(`${base}/api/auth/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "agri@example.fr", password: "motdepasse-solide", displayName: "Agri Test" })
+  })).json();
+  assert.equal(reg.status, undefined); // 201 body
+  assert.ok(reg.token);
+  assert.equal(reg.user.role, "admin"); // first user is admin
+  assert.equal(reg.user.email, "agri@example.fr");
+
+  const dup = await fetch(`${base}/api/auth/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "agri@example.fr", password: "motdepasse-solide", displayName: "X" })
+  });
+  assert.equal(dup.status, 409);
+
+  const me = await (await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${reg.token}` } })).json();
+  assert.equal(me.user.displayName, "Agri Test");
+
+  const noauth = await fetch(`${base}/api/me`);
+  assert.equal(noauth.status, 401);
+
+  const badLogin = await fetch(`${base}/api/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "agri@example.fr", password: "wrong-password" })
+  });
+  assert.equal(badLogin.status, 401);
+
+  const created = await (await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${reg.token}` },
+    body: JSON.stringify(VALID_OBSERVATION)
+  })).json();
+  assert.equal(created.userId, reg.user.id);
+
+  await fetch(`${base}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${reg.token}` } });
+  const afterLogout = await fetch(`${base}/api/me`, { headers: { Authorization: `Bearer ${reg.token}` } });
+  assert.equal(afterLogout.status, 401);
+});
+
 test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());

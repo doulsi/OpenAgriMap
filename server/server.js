@@ -20,6 +20,7 @@ const path = require("path");
 const { validateObservation, loadSchema } = require("./validator");
 const { ReportStore } = require("./store");
 const { levelFor } = require("./gamification");
+const { AuthService } = require("./auth");
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -76,12 +77,56 @@ function readBody(req, limit = 64 * 1024) {
 function createServer({ store, schema } = {}) {
   const reportStore = store || new ReportStore();
   const observationSchema = schema || loadSchema();
+  const auth = new AuthService(reportStore);
+
+  function bearerUser(req) {
+    const h = req.headers["authorization"] || "";
+    const token = h.startsWith("Bearer ") ? h.slice(7) : null;
+    return token ? auth.userFromToken(token) : null;
+  }
 
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
     try {
+      // P1 accounts
+      if (pathname === "/api/auth/register" && req.method === "POST") {
+        let payload;
+        try { payload = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "invalid JSON body" }); }
+        try {
+          const user = auth.register(payload.email, payload.password, payload.displayName);
+          const session = auth.login(payload.email, payload.password);
+          return sendJson(res, 201, { user, token: session.token });
+        } catch (err) {
+          const status = { BAD_EMAIL: 422, WEAK_PASSWORD: 422, BAD_NAME: 422, EMAIL_TAKEN: 409 }[err.code] || 400;
+          return sendJson(res, status, { error: err.message });
+        }
+      }
+
+      if (pathname === "/api/auth/login" && req.method === "POST") {
+        let payload;
+        try { payload = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "invalid JSON body" }); }
+        try {
+          const session = auth.login(payload.email, payload.password);
+          return sendJson(res, 200, session);
+        } catch (err) {
+          return sendJson(res, 401, { error: "invalid credentials" });
+        }
+      }
+
+      if (pathname === "/api/auth/logout" && req.method === "POST") {
+        const h = req.headers["authorization"] || "";
+        if (h.startsWith("Bearer ")) auth.logout(h.slice(7));
+        return sendJson(res, 204, {});
+      }
+
+      if (pathname === "/api/me" && req.method === "GET") {
+        const user = bearerUser(req);
+        if (!user) return sendJson(res, 401, { error: "not authenticated" });
+        return sendJson(res, 200, { user: auth.publicUser(user) });
+      }
+
       // P6 open by default: public API documentation (OpenAPI 3, static)
       if (pathname === "/api/openapi.json" && req.method === "GET") {
         const spec = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "docs", "openapi.json"), "utf8"));
@@ -163,7 +208,7 @@ function createServer({ store, schema } = {}) {
 
         let record;
         try {
-          record = reportStore.add(payload);
+          record = reportStore.add(payload, bearerUser(req));
         } catch (err) {
           if (err.code === "DUPLICATE") {
             return sendJson(res, 409, {
