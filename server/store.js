@@ -66,6 +66,13 @@ class ReportStore {
   }
 
   add(observation) {
+    const duplicate = this.findDuplicate(observation);
+    if (duplicate) {
+      const err = new Error("duplicate observation: an identical report was submitted within the last 24h");
+      err.code = "DUPLICATE";
+      err.existingId = duplicate.id;
+      throw err;
+    }
     const record = {
       id: `rep-${this.nextId++}`,
       ...observation,
@@ -76,6 +83,50 @@ class ReportStore {
     this.reports.unshift(record);
     this.persist();
     return record;
+  }
+
+  /**
+   * P2 anti-abus : two reports from the same display name, same bioaggressor,
+   * same crop, within 250 m and 24 h are treated as duplicates (redundant
+   * signalement), not as independent confirmations.
+   */
+  findDuplicate(observation) {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const observed = Date.parse(observation.observedAt);
+    return this.reports.find((r) => {
+      if (r.origin !== "community") return false;
+      if (r.bioaggressor !== observation.bioaggressor) return false;
+      if (r.crop !== observation.crop) return false;
+      if (r.reporter.displayName !== observation.reporter.displayName) return false;
+      if (Math.abs(Date.parse(r.observedAt) - observed) > DAY_MS) return false;
+      const dLat = (r.location.lat - observation.location.lat) * 111320;
+      const dLng = (r.location.lng - observation.location.lng) * 111320 * Math.cos(observation.location.lat * Math.PI / 180);
+      return Math.hypot(dLat, dLng) <= 250;
+    });
+  }
+
+  /** P2 modération : change le statut d'un signalement (pending_moderation / confirmed / rejected). */
+  setStatus(id, status) {
+    const allowed = ["pending_moderation", "confirmed", "rejected"];
+    if (!allowed.includes(status)) {
+      const err = new Error(`invalid status "${status}"`);
+      err.code = "BAD_STATUS";
+      throw err;
+    }
+    const record = this.reports.find((r) => r.id === id);
+    if (!record) return null;
+    record.status = status;
+    this.persist();
+    return record;
+  }
+
+  /** P2 réputation (style Waze) : nombre de signalements confirmés par contributeur. */
+  reputation(displayName) {
+    return this.reports.filter(
+      (r) => r.origin === "community" &&
+        r.reporter.displayName === displayName &&
+        r.status === "confirmed"
+    ).length;
   }
 }
 

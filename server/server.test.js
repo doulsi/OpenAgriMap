@@ -136,3 +136,64 @@ test("GET /api/proxy/:source rejects unknown sources (404)", async (t) => {
   const res = await fetch(`${base}/api/proxy/unknown?x=1`);
   assert.equal(res.status, 404);
 });
+
+test("POST /api/reports rejects a redundant duplicate (409)", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const post = () => fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  });
+  const first = await post();
+  assert.equal(first.status, 201);
+  const second = await post();
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.ok(body.existingId);
+
+  // same place but different crop => not a duplicate
+  const other = { ...VALID_OBSERVATION, crop: "Pomme de terre" };
+  const third = await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(other)
+  });
+  assert.equal(third.status, 201);
+});
+
+test("PATCH /api/reports/:id moderates a report and reputation counts confirmed ones", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+
+  const created = await (await fetch(`${base}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(VALID_OBSERVATION)
+  })).json();
+
+  const bad = await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "bogus" })
+  });
+  assert.equal(bad.status, 422);
+
+  const missing = await fetch(`${base}/api/reports/rep-nope`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "confirmed" })
+  });
+  assert.equal(missing.status, 404);
+
+  const ok = await (await fetch(`${base}/api/reports/${created.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "confirmed" })
+  })).json();
+  assert.equal(ok.status, "confirmed");
+
+  const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Jean-Paul D.")}/reputation`)).json();
+  assert.equal(rep.confirmedReports, 1);
+});

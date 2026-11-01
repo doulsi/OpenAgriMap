@@ -114,8 +114,49 @@ function createServer({ store, schema } = {}) {
           });
         }
 
-        const record = reportStore.add(payload);
+        let record;
+        try {
+          record = reportStore.add(payload);
+        } catch (err) {
+          if (err.code === "DUPLICATE") {
+            return sendJson(res, 409, {
+              error: "duplicate observation (redundant signalement within 24h / 250m)",
+              existingId: err.existingId
+            });
+          }
+          throw err;
+        }
         return sendJson(res, 201, record);
+      }
+
+      // P2 moderation: PATCH /api/reports/:id  {"status": "confirmed"|"rejected"|"pending_moderation"}
+      const moderationMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
+      if (moderationMatch && req.method === "PATCH") {
+        let payload;
+        try {
+          payload = JSON.parse(await readBody(req));
+        } catch {
+          return sendJson(res, 400, { error: "invalid JSON body" });
+        }
+        let record;
+        try {
+          record = reportStore.setStatus(moderationMatch[1], payload.status);
+        } catch (err) {
+          if (err.code === "BAD_STATUS") return sendJson(res, 422, { error: err.message });
+          throw err;
+        }
+        if (!record) return sendJson(res, 404, { error: "report not found" });
+        return sendJson(res, 200, record);
+      }
+
+      // P2 reputation: GET /api/reporters/:name/reputation
+      const repMatch = pathname.match(/^\/api\/reporters\/([^/]+)\/reputation$/);
+      if (repMatch && req.method === "GET") {
+        const name = decodeURIComponent(repMatch[1]);
+        return sendJson(res, 200, {
+          displayName: name,
+          confirmedReports: reportStore.reputation(name)
+        });
       }
 
       if (pathname.startsWith("/api/proxy/") && req.method === "GET") {
