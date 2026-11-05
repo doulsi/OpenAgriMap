@@ -643,6 +643,110 @@ const Services = {
         riskDetail: "Modélisation bioclimatique régionale active."
       };
     }
+  },
+
+  async fetchNappesStations(bounds, size = 250) {
+    try {
+      const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
+      const url = `/api/proxy/hubeau/niveaux_nappes/stations?bbox=${bbox}&srid=4326&size=${size}&format=geojson`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error("Hub'Eau stations API error");
+      const data = await res.json();
+      const features = data.features || [];
+      return features.map(f => {
+        const p = f.properties || {};
+        const coords = f.geometry && f.geometry.coordinates;
+        const lat = coords ? coords[1] : parseFloat(p.latitude);
+        const lng = coords ? coords[0] : parseFloat(p.longitude);
+        return {
+          codeBss: p.code_bss || p.bss_id || p.code_station || "",
+          name: p.nom_station || p.libelle_station || p.code_bss || "Piézomètre",
+          commune: p.nom_commune || p.nom_commune_actuel || "",
+          departement: p.code_departement || p.num_departement || "",
+          aquifer: p.libelle_bdlisa || p.code_bdlisa || "",
+          altitude: (p.altitude_ngf ?? p.altitude) ?? null,
+          profondeur: p.profondeur ?? null,
+          nbMesures: p.nb_mesures ?? null,
+          dateFinMesure: p.date_fin_mesure || "",
+          lat,
+          lng
+        };
+      }).filter(s => s.codeBss && Number.isFinite(s.lat) && Number.isFinite(s.lng));
+    } catch (err) {
+      console.warn("Hub'Eau stations fetch:", err.message);
+      return [];
+    }
+  },
+
+  async fetchNappeChronique(codeBss, months = 24) {
+    try {
+      const debut = new Date();
+      debut.setMonth(debut.getMonth() - months);
+      const dateDebut = debut.toISOString().slice(0, 10);
+      const url = `/api/proxy/hubeau/niveaux_nappes/chroniques?code_bss=${encodeURIComponent(codeBss)}&date_debut_mesure=${dateDebut}&size=1000&sort=desc`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error("Hub'Eau chroniques API error");
+      const data = await res.json();
+      return (data.data || [])
+        .map(r => ({
+          date: r.date_mesure,
+          niveau: (r.niveau_nappe_m !== undefined && r.niveau_nappe_m !== null) ? parseFloat(r.niveau_nappe_m) : null
+        }))
+        .filter(r => r.date && r.niveau !== null);
+    } catch (err) {
+      console.warn("Hub'Eau chronique fetch:", err.message);
+      return [];
+    }
+  },
+
+  buildMonthlySeries(rows) {
+    const buckets = new Map();
+    for (const r of rows) {
+      const key = String(r.date).slice(0, 7);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(r.niveau);
+    }
+    return [...buckets.entries()]
+      .map(([month, vals]) => ({ month, niveau: vals.reduce((a, b) => a + b, 0) / vals.length, n: vals.length }))
+      .sort((a, b) => (a.month < b.month ? 1 : -1));
+  },
+
+  classifyNappeNiveau(monthly) {
+    if (!monthly || monthly.length === 0) {
+      return { level: 0, label: "Sans mesure récente", color: "#9ca3af", pct: null, trend: "unknown", trendLabel: "Inconnue", trendArrow: "" };
+    }
+    const latest = monthly[0];
+    const latestMonth = latest.month.slice(5, 7);
+    const hist = monthly.filter(m => m.month.slice(5, 7) === latestMonth && m.month !== latest.month).map(m => m.niveau);
+    let pct = null;
+    if (hist.length >= 4) {
+      const sorted = [...hist].sort((a, b) => a - b);
+      const below = sorted.filter(v => v <= latest.niveau).length;
+      pct = (below / sorted.length) * 100;
+    }
+    let level, label, color;
+    if (pct === null) { level = 0; label = "Historique insuffisant"; color = "#9ca3af"; }
+    else if (pct >= 90) { level = 7; label = "Niveau très haut"; color = "#08519c"; }
+    else if (pct >= 75) { level = 6; label = "Niveau haut"; color = "#3182bd"; }
+    else if (pct >= 60) { level = 5; label = "Niveau modérément haut"; color = "#31a354"; }
+    else if (pct >= 40) { level = 4; label = "Niveau autour de la moyenne"; color = "#eab308"; }
+    else if (pct >= 25) { level = 3; label = "Niveau modérément bas"; color = "#f16913"; }
+    else if (pct >= 10) { level = 2; label = "Niveau bas"; color = "#e31a1c"; }
+    else { level = 1; label = "Niveau très bas"; color = "#bd0026"; }
+    let trend = "stable", trendLabel = "Stable", trendArrow = "►";
+    if (monthly.length >= 3) {
+      const prev = (monthly[1].niveau + monthly[2].niveau) / 2;
+      const diff = latest.niveau - prev;
+      if (diff > 0.05) { trend = "up"; trendLabel = "En hausse"; trendArrow = "▲"; }
+      else if (diff < -0.05) { trend = "down"; trendLabel = "En baisse"; trendArrow = "▼"; }
+    }
+    return { level, label, color, pct, trend, trendLabel, trendArrow };
   }
 };
 

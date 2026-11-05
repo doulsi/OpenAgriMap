@@ -50,7 +50,8 @@ const PROXY_TARGETS = {
   gbif: "https://api.gbif.org/v1/occurrence/search",
   geocode: "https://data.geopf.fr/geocodage/search",
   nominatim: "https://nominatim.openstreetmap.org/search",
-  apicarto: "https://apicarto.ign.fr/api"
+  apicarto: "https://apicarto.ign.fr/api",
+  hubeau: "https://hubeau.eaufrance.fr/api/v1"
 };
 
 const PROXY_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -214,6 +215,36 @@ function createServer({ store, schema, rateLimits } = {}) {
         const body = await upstream.text();
         proxyCache.set(cacheKey, { body, expiresAt: Date.now() + 60 * 60 * 1000 }); // RPG changes yearly: 1h cache
         res.writeHead(upstream.status, { "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8", "X-Cache": "MISS" });
+        return res.end(body);
+      }
+
+      // Hub'Eau / BRGM groundwater levels (niveaux_nappes, donnees ADES, Licence Ouverte 2.0).
+      // Whitelisted sub-paths only; the part after /api/proxy/hubeau/ is forwarded as-is.
+      if (pathname.startsWith("/api/proxy/hubeau/") && req.method === "GET") {
+        const sub = pathname.slice("/api/proxy/hubeau/".length);
+        if (!/^niveaux_nappes\/(stations|chroniques|chroniques_tr)$/.test(sub)) {
+          return sendJson(res, 404, { error: `unknown hubeau path "${sub}"` });
+        }
+        const cacheKey = `hubeau:${sub}?${url.searchParams.toString()}`;
+        const cached = proxyCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Cache": "HIT" });
+          return res.end(cached.body);
+        }
+        const headers = { accept: "application/json" };
+        let upstream = await fetch(`${PROXY_TARGETS.hubeau}/${sub}?${url.searchParams.toString()}`, { headers });
+        if (upstream.status === 429) {
+          await new Promise((r) => setTimeout(r, 1200));
+          upstream = await fetch(`${PROXY_TARGETS.hubeau}/${sub}?${url.searchParams.toString()}`, { headers });
+        }
+        const body = await upstream.text();
+        // Stations change rarely (24h); piezometric measurements are daily/hourly (10 min).
+        const ttl = upstream.status === 200 ? (sub.endsWith("/stations") ? 24 * 60 * 60 * 1000 : PROXY_CACHE_TTL_MS) : 60 * 1000;
+        proxyCache.set(cacheKey, { body, expiresAt: Date.now() + ttl });
+        res.writeHead(upstream.status, {
+          "Content-Type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
+          "X-Cache": "MISS"
+        });
         return res.end(body);
       }
 

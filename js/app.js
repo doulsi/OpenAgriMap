@@ -91,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const bioLayerGroup = L.layerGroup().addTo(map);
   const cropLayerGroup = L.layerGroup().addTo(map);
   const waterLayerGroup = L.layerGroup().addTo(map);
+  const nappeLayerGroup = L.layerGroup().addTo(map);
   const diseaseLayerGroup = (window.L && typeof L.markerClusterGroup === 'function') ? L.markerClusterGroup({
     maxClusterRadius: 42,
     spiderfyOnMaxZoom: true,
@@ -550,6 +551,107 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // LAYER 4b: Groundwater piezometers (Hub'Eau / BRGM / ADES, live only — zero synthetic data)
+  let nappeDebounce = null;
+  let nappeSeq = 0;
+  const NAPPE_STATION_CAP = 250;
+  const NAPPE_ENRICH_CAP = 60;
+  const nappeMarkers = new Map();
+
+  async function renderNappeLayer() {
+    nappeLayerGroup.clearLayers();
+    nappeMarkers.clear();
+    if (!document.getElementById("toggleNappeLayer").checked) return;
+    const seq = ++nappeSeq;
+    const stations = await Services.fetchNappesStations(map.getBounds(), NAPPE_STATION_CAP);
+    if (seq !== nappeSeq || !document.getElementById("toggleNappeLayer").checked) return;
+    drawNappeStations(stations);
+    Promise.all(stations.slice(0, NAPPE_ENRICH_CAP).map(st =>
+      Services.fetchNappeChronique(st.codeBss, 24).then(rows => {
+        if (seq !== nappeSeq) return;
+        st.monthly = Services.buildMonthlySeries(rows);
+        st.niveauClass = Services.classifyNappeNiveau(st.monthly);
+        st.lastMeasure = st.monthly[0] || null;
+        updateNappeMarker(st);
+      }).catch(() => {})
+    ));
+  }
+
+  function nappeIcon(cls) {
+    const color = cls && cls.color ? cls.color : "#9ca3af";
+    const arrow = cls && cls.trendArrow ? `<span class="nappe-trend" style="color:${color}">${cls.trendArrow}</span>` : "";
+    return L.divIcon({
+      className: "custom-div-icon",
+      html: `<div class="nappe-marker" style="border-color:${color}; box-shadow:0 0 10px ${color}66;">${arrow}</div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+  }
+
+  function nappeSparkline(monthly) {
+    if (!monthly || monthly.length < 2) return "";
+    const vals = monthly.slice().reverse().map(m => m.niveau);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const w = 230, h = 46, pad = 5;
+    const range = (max - min) || 1;
+    const step = (w - 2 * pad) / (vals.length - 1);
+    const pts = vals.map((v, i) => `${(pad + i * step).toFixed(1)},${(h - pad - ((v - min) / range) * (h - 2 * pad)).toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:240px;height:46px;background:rgba(15,23,42,0.6);border-radius:6px;margin-top:8px;"><polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linejoin="round"/></svg>`;
+  }
+
+  function nappePopupHtml(st) {
+    const cls = st.niveauClass;
+    const color = cls && cls.color ? cls.color : "#9ca3af";
+    const badge = cls && cls.level > 0
+      ? `<div style="margin:6px 0;font-size:0.8rem;font-weight:700;color:${color};">● ${cls.label}${cls.trendArrow ? ` <span style="font-size:0.72rem;">(${cls.trendLabel} ${cls.trendArrow})</span>` : ""}</div>`
+      : `<div style="margin:6px 0;font-size:0.8rem;font-weight:700;color:${color};">● ${cls ? cls.label : "Niveau en cours de chargement…"}</div>`;
+    const last = st.lastMeasure;
+    return `
+      <div class="map-popup">
+        <div class="popup-tag" style="background:${color}22; color:${color}; border:1px solid ${color}44;">
+          NAPPE PHRÉATIQUE • HUB'EAU / BRGM (ADES) — LICENCE OUVERTE 2.0
+        </div>
+        <h4>${st.name}</h4>
+        <div class="popup-sub">${st.commune ? `${st.commune}${st.departement ? ` (${st.departement})` : ""}` : ""}${st.aquifer ? ` • Aquifère : ${st.aquifer}` : ""}</div>
+        ${badge}
+        <div class="popup-metrics" style="grid-template-columns: 1fr 1fr; gap:6px; margin: 8px 0;">
+          <div style="background:rgba(15,23,42,0.6); padding:6px 8px; border-radius:4px;">
+            <span style="font-size:0.7rem; color:#94a3b8;">Dernier niveau (m NGF):</span><br>
+            <strong style="color:#38bdf8; font-size:0.95rem;">${last ? last.niveau.toFixed(2) : "—"}${last ? ` <span style="font-size:0.7rem;color:#94a3b8">${last.month}</span>` : ""}</strong>
+          </div>
+          <div style="background:rgba(15,23,42,0.6); padding:6px 8px; border-radius:4px;">
+            <span style="font-size:0.7rem; color:#94a3b8;">Profondeur / Altitude:</span><br>
+            <strong style="color:#cbd5e1; font-size:0.9rem;">${st.profondeur != null ? `${st.profondeur} m` : "—"}${st.altitude != null ? ` • ${st.altitude} m NGF` : ""}</strong>
+          </div>
+        </div>
+        ${nappeSparkline(st.monthly)}
+        <div style="font-size:0.72rem; color:#94a3b8; margin-top:6px;">
+          Code BSS : <code>${st.codeBss}</code>${st.nbMesures != null ? ` • ${st.nbMesures} mesures` : ""}${st.dateFinMesure ? ` • à jour au ${st.dateFinMesure}` : ""} •
+          <a href="https://ades.eaufrance.fr/Fiche/PtEau?CodeSandre=${encodeURIComponent(st.codeBss)}" target="_blank" rel="noopener" style="color:#38bdf8;">Fiche ADES</a>
+        </div>
+      </div>
+    `;
+  }
+
+  function drawNappeStations(stations) {
+    nappeLayerGroup.clearLayers();
+    nappeMarkers.clear();
+    stations.forEach(st => {
+      const marker = L.marker([st.lat, st.lng], { icon: nappeIcon(st.niveauClass) });
+      marker.bindPopup(() => nappePopupHtml(st));
+      nappeLayerGroup.addLayer(marker);
+      nappeMarkers.set(st.codeBss, { marker, station: st });
+    });
+  }
+
+  function updateNappeMarker(st) {
+    const entry = nappeMarkers.get(st.codeBss);
+    if (!entry) return;
+    entry.marker.setIcon(nappeIcon(st.niveauClass));
+    entry.marker.setPopupContent(nappePopupHtml(st));
+  }
+
   // LAYER 5: Disease & Pest Outbreaks (The Crowdsourced Alert Engine)
   function renderDiseaseLayer(summary) {
     diseaseLayerGroup.clearLayers();
@@ -948,6 +1050,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reload community vigilance reports for the new viewport (debounced separately)
     clearTimeout(reportsDebounce);
     reportsDebounce = setTimeout(loadReportsFromApi, 500);
+    // Reload live groundwater piezometers for the new viewport (debounced separately)
+    clearTimeout(nappeDebounce);
+    nappeDebounce = setTimeout(() => {
+      if (document.getElementById("toggleNappeLayer").checked) renderNappeLayer();
+    }, 600);
   });
 
   // 7. RADIUS SLIDER EVENT
@@ -965,6 +1072,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("toggleCropLayer").addEventListener("change", renderCropLayer);
   const toggleWater = document.getElementById("toggleWaterLayer");
   if (toggleWater) toggleWater.addEventListener("change", renderWaterLayer);
+  const toggleNappe = document.getElementById("toggleNappeLayer");
+  if (toggleNappe) toggleNappe.addEventListener("change", renderNappeLayer);
   document.getElementById("toggleDiseaseLayer").addEventListener("change", () => {
     outbreakEngine.notify();
   });
@@ -1202,6 +1311,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderBiodiversityLayer();
   renderCropLayer();
   renderWaterLayer();
+  renderNappeLayer();
   loadReportsFromApi();
   outbreakEngine.notify();
   // Initial soil inspector availability check

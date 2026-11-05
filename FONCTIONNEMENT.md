@@ -170,8 +170,21 @@ c:\Marc\OpenStreetMap for Agriculture\
 
 ---
 
+## 9. 💧 Couche Nappes phréatiques (Hub'Eau / BRGM / ADES)
+
+* **Source :** API **Hub'Eau « Piézométrie »** (données **ADES**, BRGM/OFB), Licence Ouverte 2.0 :
+  * `niveaux_nappes/stations?bbox=...&format=geojson` — piézomètres du viewport (cache serveur 24 h).
+  * `niveaux_nappes/chroniques?code_bss=...&date_debut_mesure=...&sort=desc` — niveaux piézométriques en m NGF (cache 10 min).
+  * `niveaux_nappes/chroniques_tr` — mesures horaires télétransmises (~1 700 piézomètres).
+* **Passage par le proxy serveur :** `/api/proxy/hubeau/...` (sous-chemins whitelistés dans `server/server.js`, comme ApiCarto), afin de ne pas exposer le navigateur aux limites de débit de Hub'Eau.
+* **Niveau relatif & tendance :** agrégation mensuelle des chroniques (24 mois), percentile du mois en cours contre l'historique du même mois → 7 classes façon bulletin BRGM (très haut → très bas, couleurs de la carte « Situation des nappes »), tendance = écart du dernier mois vs moyenne des 2 mois précédents (▲ hausse / ► stable / ▼ baisse).
+* **Affichage :** marqueurs colorés + flèche de tendance, rechargés au déplacement de la carte (debounced, plafond 250 stations, enrichissement chronique de 60 stations), popup avec dernier niveau (m NGF), profondeur, aquifère BDLisa, sparkline 24 mois et lien vers la fiche ADES. Hors ligne : aucune donnée fictive, la couche reste vide.
+
+---
+
 ## 📜 Licences des Jeux de Données
 * **Données IGN (RPG, Géocodage, Orthophoto)** : Licence Ouverte 2.0 (Etalab).
 * **Données Sol (ISRIC SoilGrids)** : Creative Commons CC-BY 4.0.
 * **Données Biodiversité (GBIF / INPN)** : CC-BY 4.0 & Licence Ouverte SINP.
+* **Données Nappes phréatiques (Hub'Eau / ADES — BRGM/OFB)** : Licence Ouverte 2.0.
 * **Modèle collaboratif OpenAgriMap** : Open Database License (ODbL).

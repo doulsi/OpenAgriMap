@@ -32,6 +32,27 @@ const OPEN_DATA_CATALOG = {
       }
     ]
   },
+  groundwater: {
+    title: "Nappes phréatiques (eaux souterraines)",
+    providers: [
+      {
+        name: "Hub'Eau / BRGM — API Piézométrie (données ADES)",
+        coverage: "France entière (métropole & DROM)",
+        type: "REST API (JSON / GeoJSON / CSV)",
+        endpoint: "https://hubeau.eaufrance.fr/api/v1/niveaux_nappes/stations",
+        license: "Licence Ouverte 2.0",
+        description: "Référentiel des piézomètres (stations), chroniques de niveaux piézométriques en m NGF (chroniques) et mesures horaires télétransmises (chroniques_tr)."
+      },
+      {
+        name: "ADES — portail national d'accès aux données sur les eaux souterraines",
+        coverage: "France entière",
+        type: "Portail & fiches points d'eau",
+        endpoint: "https://ades.eaufrance.fr",
+        license: "Licence Ouverte 2.0",
+        description: "Fiche détaillée de chaque point d'eau (code BSS) : niveaux, qualité, producteur."
+      }
+    ]
+  },
   biodiversity: {
     title: "Biodiversité & Faune Auxiliaire",
     providers: [
