@@ -169,6 +169,17 @@ test("proxy routes the five P3 upstream sources (soilgrids, openmeteo, gbif, geo
   }
 });
 
+test("proxy routes the Hub'Eau/BRGM groundwater upstream (hubeau) and whitelists niveaux_nappes sub-paths", async (t) => {
+  const { server, base } = await startTestServer();
+  t.after(() => server.close());
+  const { PROXY_TARGETS } = require("./server");
+  assert.ok(PROXY_TARGETS.hubeau && PROXY_TARGETS.hubeau.includes("hubeau.eaufrance.fr"));
+  const res = await fetch(`${base}/api/proxy/hubeau/niveaux_nappes/evil?x=1`);
+  assert.equal(res.status, 404);
+  const res2 = await fetch(`${base}/api/proxy/hubeau/qualite_nappes/analyses?x=1`);
+  assert.equal(res2.status, 404);
+});
+
 test("P6: /api/openapi.json serves a valid OpenAPI spec and /api/export.geojson exports community reports as ODbL GeoJSON", async (t) => {
   const { server, base } = await startTestServer();
   t.after(() => server.close());

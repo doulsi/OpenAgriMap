@@ -142,7 +142,7 @@
       <section class="layers-manager-section">
         <div class="section-title-row">
           <h3><i data-lucide="layers"></i> Couches thématiques Open Data</h3>
-          <span class="badge-count" id="activeLayersCount">3 actives</span>
+          <span class="badge-count" id="activeLayersCount">5 actives</span>
         </div>
 
         <!-- 1. BIODIVERSITY LAYER -->
@@ -220,7 +220,24 @@
           </div>
         </div>
 
-        <!-- 4. DISEASE & PEST LAYER -->
+        <!-- 4. GROUNDWATER (NAPPES PHRÉATIQUES) LAYER -->
+        <div class="layer-group-card" id="nappeGroupCard">
+          <div class="layer-group-header">
+            <label class="switch-container">
+              <input type="checkbox" id="toggleNappeLayer" checked />
+              <span class="switch-slider"></span>
+            </label>
+            <div class="layer-meta">
+              <div class="layer-title-row">
+                <span class="layer-name">💧 Nappes phréatiques (piézomètres)</span>
+                <span class="source-tag">Hub'Eau / BRGM / ADES</span>
+              </div>
+              <p class="layer-desc">Niveaux piézométriques des nappes souterraines (m NGF), niveau relatif &amp; tendance, données live.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. DISEASE & PEST LAYER -->
         <div class="layer-group-card" id="diseaseGroupCard">
           <div class="layer-group-header">
             <label class="switch-container">
@@ -594,10 +611,17 @@
                 <td><span class="badge-licence">Licence Ouverte</span></td>
               </tr>
               <tr>
-                <td><strong>Nappes phréatiques & Drainage</strong></td>
-                <td>BRGM & Hub'Eau</td>
-                <td>API REST (GeoJSON)</td>
+                <td><strong>Nappes phréatiques (piézomètres)</strong></td>
+                <td>Hub'Eau / BRGM (données ADES)</td>
+                <td>API REST (JSON / GeoJSON)</td>
                 <td><code>https://hubeau.eaufrance.fr/api/v1/niveaux_nappes/stations</code></td>
+                <td><span class="badge-licence">Licence Ouverte 2.0</span></td>
+              </tr>
+              <tr>
+                <td><strong>Niveaux piézométriques (chroniques)</strong></td>
+                <td>Hub'Eau / BRGM (données ADES)</td>
+                <td>API REST (JSON)</td>
+                <td><code>https://hubeau.eaufrance.fr/api/v1/niveaux_nappes/chroniques</code> (+ <code>chroniques_tr</code> temps réel)</td>
                 <td><span class="badge-licence">Licence Ouverte 2.0</span></td>
               </tr>
             </tbody>

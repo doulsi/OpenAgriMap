@@ -32,7 +32,7 @@ PR #17/#18 fusionnées, **PR #20 en revue** (backend contribution ouverte).
 - [ ] Badges & quêtes saisonnières — **P5 (suite)**
 - [x] **Zéro donnée fictive** : 506 signalements « seed » supprimés de `data/reports.json` (gitignored), `INITIAL_OUTBREAK_REPORTS` retiré du frontend, `seedReports()` = `[]` — la couche Vigilance n'affiche que des contributions réelles (PR #20)
 - [x] **Architecture contribution ouverte documentée** : `docs/CONTRIBUTION-ARCHITECTURE.md` (flux, contrat, anti-abus, stockage JSON → PostGIS, ODbL)
-- [x] Tests : `npm test` **29/29** (auth, rate-limit, upload, modération, doublons, filtres, proxy, RPG…)
+- [x] Tests : `npm test` **30/30** (auth, rate-limit, upload, modération, doublons, filtres, proxy, proxy hubeau whitelisté, RPG…)
 
 ## Couches cartographiques (état au 2026-11)
 
@@ -40,6 +40,7 @@ PR #17/#18 fusionnées, **PR #20 en revue** (backend contribution ouverte).
 - [x] 💧 **Statut Hydrique & Humidité (Sols)** : 31 stations France, badge couleur selon statut (confort/déficit/sécheresse/saturé), enrichissement live Open-Meteo (12 premières stations, « (live) ») sans mutation des seeds (PR #17/#18, issue #15)
 - [x] 🦠 **Vigilance Sanitaire & Épidémies** : signalements citoyens réels uniquement (`GET /api/reports?bbox=…&status=pending_moderation,confirmed`), moteur de proximité (rayon réglable, bannière, feed cliquable), création via formulaire avec photo, modération (PR #20, issues #16/#19)
 - [x] 🌾 **Cultures & Parcelles (RPG)** : WMS IGN national + parcelles live ApiCarto (zoom ≥ 10), fiche d'identité (assolement 2020-2024, voisinage, benchmark)
+- [x] 💧 **Nappes phréatiques (piézomètres)** : stations live Hub'Eau/BRGM (données ADES, Licence Ouverte 2.0) par viewport via `/api/proxy/hubeau/niveaux_nappes/{stations,chroniques,chroniques_tr}` (sous-chemins whitelistés, cache 24 h / 10 min), niveau relatif calculé sur les chroniques 24 mois (légende BRGM 7 classes + tendance ▲/►/▼), popup avec sparkline et lien fiche ADES — zéro donnée fictive hors ligne
 
 ## Valeur pour les agriculteurs (§3.2/§3.5 du plan)
 

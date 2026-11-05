@@ -12,6 +12,7 @@ Plateforme cartographique collaborative et ouverte dédiée au monde agricole et
 - **INRAE / GIS Sol (RMQS & BDAT)** : Réseau de Mesure de la Qualité des Sols et Banque d'analyses de terre.
 - **Hub'Eau / BRGM** : Suivi piézométrique des nappes souterraines et conductivité pour évaluer la capacité de drainage.
 - *Fonctionnalité clé dans l'app* : Sondeur de sol instantané interrogeant l'API REST en direct au clic sur n'importe quel point du territoire français.
+- *Fonctionnalité clé dans l'app* : couche **💧 Nappes phréatiques** live — piézomètres ADES via Hub'Eau (`/api/proxy/hubeau/niveaux_nappes/*`), niveau relatif (légende BRGM 7 classes) + tendance calculés sur les chroniques 24 mois, affichés par zone visible.
 
 ### 2. 🐝 Couche Biodiversité & Auxiliaires
 - **GBIF France / INPN MNHN** : Occurrences géoréférencées pour les oiseaux régulateurs (*Aves*, ex: rapaces chasseurs de rongeurs) et insectes utiles.
@@ -98,7 +99,7 @@ Le badge de niveau s'affiche en direct dans le formulaire de signalement (`GET /
 ## 🧪 Tester
 
 ```bash
-npm test          # 16 tests node --test (aucun accès réseau requis)
+npm test          # 30 tests node --test (aucun accès réseau requis)
 npm start         # puis ouvrir http://127.0.0.1:8080
 ```
 
@@ -112,6 +113,7 @@ Vérifications manuelles rapides :
 7. Créer un compte via l'API (POST `/api/auth/register` avec `{email, password, displayName}`) → récupérer le `token`, puis GET `/api/me` avec `Authorization: Bearer <token>`.
 8. Installer la PWA : icône « Install » dans la barre d'adresse (Chrome/Edge) après `npm start`.
 9. Activer la couche **Cultures & Parcelles** → cliquer sur une parcelle bleue → la fiche d'identité s'ouvre avec l'historique d'assolement, les signalements sur la parcelle, le voisinage à risque et le benchmark du territoire.
+10. Activer la couche **Nappes phréatiques** → les piézomètres ADES du viewport apparaissent (bordure colorée selon le niveau BRGM + flèche de tendance) → cliquer sur un point → popup avec dernier niveau (m NGF), aquifère, sparkline 24 mois et lien vers la fiche ADES.
 
 ## 🔤 Glossaire des acronymes
 
@@ -175,6 +177,7 @@ L'application n'utilise aucun service commercial propriétaire et intègre 4 fon
 - **ISRIC SoilGrids** : CC-BY 4.0
 - **IGN & RPG** : Licence Ouverte 2.0 (Etalab)
 - **GBIF / INPN** : CC-BY 4.0 / Licence Ouverte SINP
+- **Hub'Eau / ADES (BRGM/OFB) — nappes phréatiques** : Licence Ouverte 2.0
 - **Données participatives OpenAgriMap** : Open Database License (ODbL)
 
 Conformité (RGPD, licences, RPG/ASP) : voir [docs/COMPLIANCE.md](docs/COMPLIANCE.md).

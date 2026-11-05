@@ -1980,6 +1980,26 @@ body {
   transform: scale(1.2);
   box-shadow: 0 0 16px rgba(56, 189, 248, 0.8);
 }
+.nappe-marker {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 3px solid #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.nappe-marker:hover {
+  transform: scale(1.25);
+}
+.nappe-trend {
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-5px); }

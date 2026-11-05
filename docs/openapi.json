@@ -371,6 +371,34 @@
         }
       }
     },
+    "/api/proxy/hubeau/{subpath}": {
+      "get": {
+        "summary": "Pass-through cache vers Hub'Eau / BRGM (données ADES, Licence Ouverte 2.0) — sous-chemins autorisés : niveaux_nappes/stations (cache 24h), niveaux_nappes/chroniques et niveaux_nappes/chroniques_tr (cache 10 min) — ex: /api/proxy/hubeau/niveaux_nappes/stations?bbox=-1,46,1,48&size=250&format=geojson",
+        "parameters": [
+          {
+            "name": "subpath",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "niveaux_nappes/stations",
+                "niveaux_nappes/chroniques",
+                "niveaux_nappes/chroniques_tr"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Réponse amont (X-Cache: HIT/MISS)"
+          },
+          "404": {
+            "description": "Sous-chemin non autorisé"
+          }
+        }
+      }
+    },
     "/api/rpg/parcels": {
       "get": {
         "summary": "Parcelles RPG live pour une bbox (ApiCarto IGN rpg/v2, Licence Ouverte 2.0, cache 1h) — ex: ?bbox=-0.5,47.0,0.5,47.6&annee=2024&_limit=1000",
