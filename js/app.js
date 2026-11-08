@@ -18,8 +18,23 @@ document.addEventListener("DOMContentLoaded", () => {
       rust: true,
       pests: true
     },
+    layers: {
+      bio: true,
+      crop: true,
+      water: true,
+      disease: true
+    },
     activeBasemap: "osmfr",
     center: { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng }
+  };
+
+  // Client-side report status vocabulary: "pending_moderation" and "confirmed" come
+  // from the server (server/store.js REPORT_STATUSES); "local" marks an offline-only
+  // submission kept in the outbreak engine until the API is reachable again.
+  const REPORT_STATUS_BADGE = {
+    confirmed: '<span class="badge-sev-low">✔ confirmé</span>',
+    local: '<span class="badge-sev-medium">💾 local (hors ligne)</span>',
+    pending_moderation: '<span class="badge-sev-medium">⏳ en attente de modération</span>'
   };
 
   // Outbreak engine starts EMPTY of mocks; real reports are loaded from the API.
@@ -141,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let gbifSeq = 0; // sequence guard: drop live responses that arrive after a newer render
   async function renderBiodiversityLayer() {
     bioLayerGroup.clearLayers();
-    if (!document.getElementById("toggleBioLayer").checked) return;
+    if (!state.layers.bio) return;
 
     function addBioMarker(pt) {
       let iconHtml = pt.iconHtml || "🐞";
@@ -218,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Plan §3.5 use case 1: fiche d'identité de parcelle (side panel)
   // Fiche for a LIVE RPG parcelle (id not in the local store): identity from ApiCarto props,
   // real multi-year history from /api/rpg/history at the parcel center.
-  async function openLiveParcelSheet(parcelId, liveParcel, sheet) {
+  async function openLiveParcelSheet(parcelId, liveParcel, sheet, seq = parcelSheetSeq) {
     const pr = liveParcel.props || {};
     const lat = liveParcel.lat, lng = liveParcel.lng;
     sheet.innerHTML = `<div class="section-title-row"><h3><i data-lucide="map"></i> Fiche d'identité</h3><button class="close-modal-btn" id="closeParcelSheetBtn"><i data-lucide="x"></i></button></div><p>Chargement…</p>`;
@@ -228,6 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let historyRows = "";
     try {
       const hist = await (await fetch(`/api/rpg/history?lat=${lat}&lng=${lng}`)).json();
+      if (seq !== parcelSheetSeq) return; // a newer parcel click already took over the sheet
       historyRows = (hist.years || []).map(y => `<tr><td><strong>${y.year}</strong></td><td>${cultureLabel(y.code_cultu)}</td><td>${y.surf_parc != null ? y.surf_parc + " ha" : ""}</td></tr>`).join("")
         || `<tr><td colspan="3">Aucune donnée RPG pour ce point sur ces millésimes.</td></tr>`;
     } catch { historyRows = `<tr><td colspan="3">Historique indisponible (hors ligne).</td></tr>`; }
@@ -250,6 +266,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("closeParcelSheetBtn").addEventListener("click", () => { sheet.style.display = "none"; });
     try {
       const nb = await (await fetch(`/api/neighborhood?lat=${lat}&lng=${lng}&radiusKm=10`)).json();
+      if (seq !== parcelSheetSeq) return; // a newer parcel click already took over the sheet
       document.getElementById("neighborhoodSection").innerHTML = `
         <div class="section-title-row"><h3>Voisinage à risque (10 km)</h3></div>
         ${nb.alert ? `<p class="alert-description" style="color:#ef4444"><strong>⚠ ${nb.alert}</strong></p>` : ""}
@@ -257,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { /* offline */ }
     try {
       const bm = await (await fetch(`/api/benchmark?lat=${lat}&lng=${lng}&radiusKm=10`)).json();
+      if (seq !== parcelSheetSeq) return; // a newer parcel click already took over the sheet
       const aggr = Object.entries(bm.pressureByAggressor).map(([k, v]) => `<span class="stat-pill"><span class="stat-num">${v}</span> <span class="stat-label">${k}</span></span>`).join(" ");
       document.getElementById("benchmarkSection").innerHTML = `
         <div class="section-title-row"><h3>Benchmark de territoire (10 km)</h3></div>
@@ -264,7 +282,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { /* offline */ }
   }
 
+  let parcelSheetSeq = 0; // sequence guard: drop sheet renders that arrive after a newer parcel click
+
   async function openParcelSheet(parcelId, liveParcel = null) {
+    const seq = ++parcelSheetSeq;
     let sheet = document.getElementById("parcelSheet");
     if (!sheet) {
       sheet = document.createElement("aside");
@@ -280,9 +301,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const res = await fetch(`/api/parcels/${encodeURIComponent(parcelId)}`);
+      if (seq !== parcelSheetSeq) return; // a newer parcel click already took over the sheet
       if (!res.ok) {
         // live RPG id not in the server store: build the fiche straight from ApiCarto props + live history
-        if (liveParcel) { openLiveParcelSheet(parcelId, liveParcel, sheet); return; }
+        if (liveParcel) { openLiveParcelSheet(parcelId, liveParcel, sheet, seq); return; }
         throw new Error("API");
       }
       const p = await res.json();
@@ -370,7 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Mock parcels = OFFLINE fallback only (shown when the live RPG endpoint is unreachable).
   function renderMockParcels() {
-    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (!state.layers.crop) return;
     CROP_PARCELS.forEach(parcel => {
       const polygon = L.polygon(parcel.coords, {
         color: "#3b82f6",
@@ -419,13 +441,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // Falls back to the bundled mock parcels when offline/static.
   let liveParcelsLayer = null;
   let rpgDebounce = null;
+  let rpgSeq = 0; // sequence guard: drop live responses that arrive after a newer render
   async function loadLiveRpgParcels() {
-    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (!state.layers.crop) return;
+    const seq = ++rpgSeq;
     const b = map.getBounds();
     const bbox = `${b.getWest().toFixed(4)},${b.getSouth().toFixed(4)},${b.getEast().toFixed(4)},${b.getNorth().toFixed(4)}`;
     try {
       const res = await fetch(`/api/rpg/parcels?bbox=${bbox}&_limit=1000`);
       if (!res.ok) throw new Error("api");
+      if (seq !== rpgSeq) return; // a newer render already replaced this viewport: drop the stale response
       const data = await res.json();
       const feats = (data.features || []).slice(0, 1000); // ApiCarto caps at 1000 anyway
       if (liveParcelsLayer) cropLayerGroup.removeLayer(liveParcelsLayer);
@@ -444,12 +469,13 @@ document.addEventListener("DOMContentLoaded", () => {
       cropLayerGroup.addLayer(liveParcelsLayer);
     } catch {
       // offline/static mode: show the bundled mock parcels instead
+      if (seq !== rpgSeq) return; // a newer render is in flight: do not fall back over it
       renderMockParcels();
     }
   }
 
   map.on("moveend", () => {
-    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (!state.layers.crop) return;
     if (map.getZoom() < 10) return; // overview below z10 uses the WMS raster
     clearTimeout(rpgDebounce);
     rpgDebounce = setTimeout(loadLiveRpgParcels, 600);
@@ -457,7 +483,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderCropLayer() {
     cropLayerGroup.clearLayers();
-    if (!document.getElementById("toggleCropLayer").checked) return;
+    if (!state.layers.crop) return;
 
     // 1. Add official IGN nationwide WMS layer (displays all agricultural parcels in France when zoomed in)
     cropLayerGroup.addLayer(nationalRpgWmsLayer);
@@ -470,10 +496,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // LAYER 4: Soil Water Status & Moisture Stations (Open-Meteo / Hub'Eau)
+  let waterSeq = 0; // sequence guard: drop live enrichments that arrive after a newer render
   function renderWaterLayer() {
     waterLayerGroup.clearLayers();
-    const toggle = document.getElementById("toggleWaterLayer");
-    if (toggle && !toggle.checked) return;
+    if (!state.layers.water) return;
 
     // NB: top-level `const` in mock-parcels.js does NOT attach to window — guard with typeof, not window.X
     if (typeof SOIL_WATER_STATIONS !== "undefined") {
@@ -481,6 +507,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // (statusLabel used to accumulate " (live)" on every render).
       const stations = SOIL_WATER_STATIONS.map(st => ({ ...st }));
       // enrich with live Open-Meteo soil data per station (best effort, parallel, capped)
+      const seq = ++waterSeq;
       Promise.all(stations.slice(0, 12).map(st =>
         Services.fetchLiveSoilWaterStatus(st.lat, st.lng)
           .then(live => {
@@ -494,7 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
           })
           .catch(() => {})
-      )).then(() => { if (document.getElementById("toggleWaterLayer").checked) drawWaterStations(stations); });
+      )).then(() => { if (seq === waterSeq && state.layers.water) drawWaterStations(stations); });
       drawWaterStations(stations);
       return;
     }
@@ -553,7 +580,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // LAYER 5: Disease & Pest Outbreaks (The Crowdsourced Alert Engine)
   function renderDiseaseLayer(summary) {
     diseaseLayerGroup.clearLayers();
-    if (!document.getElementById("toggleDiseaseLayer").checked) return;
+    if (!state.layers.disease) return;
 
     summary.allReports.forEach(report => {
       // Filter checkboxes
@@ -599,7 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div><strong>Sévérité :</strong> <span class="badge-sev-${report.severity}">${report.severity.toUpperCase()}</span></div>
             <div><strong>Observateur :</strong> ${report.reporter}</div>
             <div><strong>Date :</strong> ${report.date}</div>
-            <div><strong>Modération :</strong> ${report.status === "confirmed" ? '<span class="badge-sev-low">✔ confirmé</span>' : report.status === "local" ? '<span class="badge-sev-medium">💾 local (hors ligne)</span>' : '<span class="badge-sev-medium">⏳ en attente de modération</span>'}</div>
+            <div><strong>Modération :</strong> ${REPORT_STATUS_BADGE[report.status] || REPORT_STATUS_BADGE.pending_moderation}</div>
           </div>
           ${report.photoUrl ? `<div style="margin-top:6px"><img src="${report.photoUrl}" alt="photo du signalement" style="max-width:220px; border-radius:6px; border:1px solid #334155" /></div>` : ""}
           <div class="popup-notes">"${report.notes}"</div>
@@ -685,6 +712,15 @@ document.addEventListener("DOMContentLoaded", () => {
    * Updates soil inspector button availability based on map center position.
    * The full soil inspector (INRAE/BRGM data) is only available inside France.
    */
+  function setInspectMode(on) {
+    state.inspectMode = on;
+    inspectModeToggleBtn.classList.toggle("active", on);
+    inspectModeLabel.textContent = on
+      ? "Sondeur de Sol : ACTIF (Cliquez sur la carte)"
+      : "Sondeur de Sol : OFF";
+    if (!on) soilInspectorPanel.classList.add("hidden");
+  }
+
   function updateSoilInspectorAvailability(lat, lng) {
     const inside = Services.isInsideFrance(lat, lng);
     state.isInsideFrance = inside;
@@ -693,11 +729,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Disable the toggle button and deactivate inspect mode if active
       inspectModeToggleBtn.classList.add("soil-btn-disabled");
       inspectModeToggleBtn.setAttribute("title", "Sondeur de sol disponible uniquement sur le territoire fran\u00e7ais");
-      if (state.inspectMode) {
-        state.inspectMode = false;
-        inspectModeToggleBtn.classList.remove("active");
-        soilInspectorPanel.classList.add("hidden");
-      }
+      if (state.inspectMode) setInspectMode(false);
       inspectModeLabel.textContent = "Sondeur de Sol : Hors France";
       if (soilOutsideFranceBanner) soilOutsideFranceBanner.classList.remove("hidden");
     } else {
@@ -716,15 +748,9 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("\u26a0\ufe0f Le Sondeur de Sol est disponible uniquement sur le territoire fran\u00e7ais m\u00e9tropolitain (donn\u00e9es INRAE / BRGM).", "warning");
       return;
     }
-    state.inspectMode = !state.inspectMode;
+    setInspectMode(!state.inspectMode);
     if (state.inspectMode) {
-      inspectModeToggleBtn.classList.add("active");
-      inspectModeLabel.textContent = "Sondeur de Sol : ACTIF (Cliquez sur la carte)";
       showToast("Mode Sondeur ACTIF : Cliquez n'importe o\u00f9 sur la carte pour interroger l'API SoilGrids.", "info");
-    } else {
-      inspectModeToggleBtn.classList.remove("active");
-      inspectModeLabel.textContent = "Sondeur de Sol : OFF";
-      soilInspectorPanel.classList.add("hidden");
     }
   });
 
@@ -732,99 +758,98 @@ document.addEventListener("DOMContentLoaded", () => {
     soilInspectorPanel.classList.add("hidden");
   });
 
+  // Exactly one inspector view is visible at any time: "loading" | "content" | "nodata" | "outside"
+  function showInspectorView(view) {
+    ["inspectorLoadingState", "inspectorContentState", "inspectorNoDataState"].forEach(id => {
+      document.getElementById(id).classList.add("hidden");
+    });
+    if (view === "loading") document.getElementById("inspectorLoadingState").classList.remove("hidden");
+    else if (view === "content") document.getElementById("inspectorContentState").classList.remove("hidden");
+    else if (view === "nodata") document.getElementById("inspectorNoDataState").classList.remove("hidden");
+    if (soilOutsideFranceBanner) soilOutsideFranceBanner.classList.toggle("hidden", view !== "outside");
+  }
+
+  // "nodata" has two variants: ocean coordinates vs. land without certified soil data
+  function showInspectorNoData(variant, reason) {
+    const cfg = variant === "ocean"
+      ? {
+          iconWrapClass: "nodata-icon-wrap ocean",
+          badgeClass: "soil-source-badge ocean",
+          badgeText: "🌊 Milieu marin / Océan",
+          title: "Zone maritime non couverte",
+          desc: "Le point sélectionné se situe en mer ou dans l'océan. Le sondeur pédologique ne s'applique qu'aux terres émergées et sols agricoles répertoriés.",
+          hint: "Naviguez vers une terre émergée ou une parcelle agricole pour utiliser le sondeur de sol.",
+          icon: "waves"
+        }
+      : {
+          iconWrapClass: "nodata-icon-wrap nodata",
+          badgeClass: "soil-source-badge nodata",
+          badgeText: "🚫 Données inconnues",
+          title: "Mesures non disponibles",
+          desc: reason || "Données de sol non répertoriées pour ce point précis (plan d'eau, surface rocheuse ou absence de relevés). Le sondeur ne restitue que les mesures certifiées.",
+          hint: "Sélectionnez une autre parcelle ou terre agricole pour interroger l'API ISRIC.",
+          icon: "alert-circle"
+        };
+    const iconWrap = document.getElementById("inspectorNoDataIconWrap");
+    const badge = document.getElementById("inspectorNoDataBadge");
+    const title = document.getElementById("inspectorNoDataTitle");
+    const desc = document.getElementById("inspectorNoDataDesc");
+    const hint = document.getElementById("inspectorNoDataHint");
+    const icon = document.getElementById("inspectorNoDataIcon");
+    if (iconWrap) iconWrap.className = cfg.iconWrapClass;
+    if (badge) {
+      badge.className = cfg.badgeClass;
+      badge.textContent = cfg.badgeText;
+    }
+    if (title) title.textContent = cfg.title;
+    if (desc) desc.textContent = cfg.desc;
+    if (hint) hint.textContent = cfg.hint;
+    if (icon) icon.setAttribute("data-lucide", cfg.icon);
+    if (window.lucide) lucide.createIcons();
+    showInspectorView("nodata");
+  }
+
   // Map Click Listener
+  let soilSeq = 0; // sequence guard: drop soil responses that arrive after a newer click
   map.on("click", async (e) => {
     const { lat, lng } = e.latlng;
 
     if (state.inspectMode) {
+      const seq = ++soilSeq;
       soilInspectorPanel.classList.remove("hidden");
       document.getElementById("inspectorCoordsLabel").textContent = `Lat: ${lat.toFixed(4)}, Lon: ${lng.toFixed(4)}`;
 
-      const loadingEl = document.getElementById("inspectorLoadingState");
-      const contentEl = document.getElementById("inspectorContentState");
-      const noDataEl = document.getElementById("inspectorNoDataState");
-      const outsideBanner = document.getElementById("soilOutsideFranceBanner");
-
       // 1. Guardrail against Ocean / Sea coordinates
       if (Services.isMaritimeOrOcean(lat, lng)) {
-        loadingEl.classList.add("hidden");
-        contentEl.classList.add("hidden");
-        outsideBanner.classList.add("hidden");
-        noDataEl.classList.remove("hidden");
-
-        const iconWrap = document.getElementById("inspectorNoDataIconWrap");
-        const badge = document.getElementById("inspectorNoDataBadge");
-        const title = document.getElementById("inspectorNoDataTitle");
-        const desc = document.getElementById("inspectorNoDataDesc");
-        const hint = document.getElementById("inspectorNoDataHint");
-        const icon = document.getElementById("inspectorNoDataIcon");
-
-        if (iconWrap) iconWrap.className = "nodata-icon-wrap ocean";
-        if (badge) {
-          badge.className = "soil-source-badge ocean";
-          badge.textContent = "🌊 Milieu marin / Océan";
-        }
-        if (title) title.textContent = "Zone maritime non couverte";
-        if (desc) desc.textContent = "Le point sélectionné se situe en mer ou dans l'océan. Le sondeur pédologique ne s'applique qu'aux terres émergées et sols agricoles répertoriés.";
-        if (hint) hint.textContent = "Naviguez vers une terre émergée ou une parcelle agricole pour utiliser le sondeur de sol.";
-        if (icon) icon.setAttribute("data-lucide", "waves");
-
-        if (window.lucide) lucide.createIcons();
+        showInspectorNoData("ocean");
         showToast("🌊 Océan / Mer : aucune donnée de sol n'existe en milieu marin.", "warning");
         return;
       }
 
       // 2. Guardrail: Check European terrestrial territory
       if (!Services.isInsideEurope(lat, lng)) {
-        loadingEl.classList.add("hidden");
-        contentEl.classList.add("hidden");
-        noDataEl.classList.add("hidden");
-        outsideBanner.classList.remove("hidden");
+        showInspectorView("outside");
         showToast("⚠️ Le sondeur pédologique et hydrique est actif sur les terres européennes.", "warning");
         return;
       }
 
       // 3. Location is on land: prepare UI & query live service
-      outsideBanner.classList.add("hidden");
-      noDataEl.classList.add("hidden");
-      contentEl.classList.add("hidden");
-      loadingEl.classList.remove("hidden");
+      showInspectorView("loading");
 
       // Query live API service (ISRIC SoilGrids + Open-Meteo soil moisture)
       const soilData = await Services.querySoilProperties(lat, lng);
 
-      loadingEl.classList.add("hidden");
+      if (seq !== soilSeq || !state.inspectMode) return; // a newer click or mode exit owns the panel now
 
       // 4. Guardrail: ensure data is KNOWN!
       if (!soilData || !soilData.hasData) {
-        contentEl.classList.add("hidden");
-        noDataEl.classList.remove("hidden");
-
-        const iconWrap = document.getElementById("inspectorNoDataIconWrap");
-        const badge = document.getElementById("inspectorNoDataBadge");
-        const title = document.getElementById("inspectorNoDataTitle");
-        const desc = document.getElementById("inspectorNoDataDesc");
-        const hint = document.getElementById("inspectorNoDataHint");
-        const icon = document.getElementById("inspectorNoDataIcon");
-
-        if (iconWrap) iconWrap.className = "nodata-icon-wrap nodata";
-        if (badge) {
-          badge.className = "soil-source-badge nodata";
-          badge.textContent = "🚫 Données inconnues";
-        }
-        if (title) title.textContent = "Mesures non disponibles";
-        if (desc) desc.textContent = soilData?.reason || "Données de sol non répertoriées pour ce point précis (plan d'eau, surface rocheuse ou absence de relevés). Le sondeur ne restitue que les mesures certifiées.";
-        if (hint) hint.textContent = "Sélectionnez une autre parcelle ou terre agricole pour interroger l'API ISRIC.";
-        if (icon) icon.setAttribute("data-lucide", "alert-circle");
-
-        if (window.lucide) lucide.createIcons();
+        showInspectorNoData("nodata", soilData?.reason);
         showToast("⚠️ Données de sol inconnues pour ces coordonnées.", "warning");
         return;
       }
 
       // 5. Data is known: populate verified measurements
-      contentEl.classList.remove("hidden");
-      noDataEl.classList.add("hidden");
+      showInspectorView("content");
 
       // Show source badge with country context
       const sourceBadgeEl = document.getElementById("soilSourceBadge");
@@ -941,7 +966,7 @@ document.addEventListener("DOMContentLoaded", () => {
       outbreakEngine.setCenter(c.lat, c.lng);
       // Check if map center is still inside France for soil inspector
       updateSoilInspectorAvailability(c.lat, c.lng);
-      if (document.getElementById("toggleBioLayer").checked) {
+      if (state.layers.bio) {
         renderBiodiversityLayer();
       }
     }, 350);
@@ -961,11 +986,21 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // 8. LAYER TOGGLES & RADIO CONTROLS
-  document.getElementById("toggleBioLayer").addEventListener("change", renderBiodiversityLayer);
-  document.getElementById("toggleCropLayer").addEventListener("change", renderCropLayer);
+  document.getElementById("toggleBioLayer").addEventListener("change", (e) => {
+    state.layers.bio = e.target.checked;
+    renderBiodiversityLayer();
+  });
+  document.getElementById("toggleCropLayer").addEventListener("change", (e) => {
+    state.layers.crop = e.target.checked;
+    renderCropLayer();
+  });
   const toggleWater = document.getElementById("toggleWaterLayer");
-  if (toggleWater) toggleWater.addEventListener("change", renderWaterLayer);
-  document.getElementById("toggleDiseaseLayer").addEventListener("change", () => {
+  if (toggleWater) toggleWater.addEventListener("change", (e) => {
+    state.layers.water = e.target.checked;
+    renderWaterLayer();
+  });
+  document.getElementById("toggleDiseaseLayer").addEventListener("change", (e) => {
+    state.layers.disease = e.target.checked;
     outbreakEngine.notify();
   });
 
@@ -1012,7 +1047,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const profile = COUNTRY_PROFILES[state.selectedCountry];
       const profileName = profile ? profile.name : state.selectedCountry;
       showToast(`🌍 Flux de données GBIF basculé sur : ${profileName}`, "info");
-      if (document.getElementById("toggleBioLayer").checked) {
+      if (state.layers.bio) {
         renderBiodiversityLayer();
       }
       // Update country info banner
@@ -1100,8 +1135,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Form Submission
+  const reportSubmitBtn = document.querySelector("#outbreakReportForm button[type=submit]");
+  let reportSubmitInFlight = false;
   document.getElementById("outbreakReportForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (reportSubmitInFlight) return; // no double submission while a report is being sent
     const disease = document.getElementById("reportDiseaseType").value;
     const severity = document.getElementById("reportSeverity").value;
     const crop = document.getElementById("reportCropAffected").value;
@@ -1117,6 +1155,20 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Un nom d'affichage est requis : les signalements anonymes sont refusés.", "error");
       return;
     }
+
+    reportSubmitInFlight = true;
+    if (reportSubmitBtn) {
+      reportSubmitBtn.disabled = true;
+      reportSubmitBtn.textContent = "Envoi en cours…";
+    }
+    const releaseSubmit = () => {
+      reportSubmitInFlight = false;
+      if (reportSubmitBtn) {
+        reportSubmitBtn.disabled = false;
+        reportSubmitBtn.innerHTML = '<i data-lucide="send"></i> Diffuser le signalement (Open Data)';
+        if (window.lucide) lucide.createIcons();
+      }
+    };
 
     // Photo evidence: uploaded to the backend (POST /api/uploads/photo) before submitting,
     // so the stored observation only carries the served /uploads/ URL.
@@ -1151,6 +1203,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (err.status === 422) {
         const detail = (err.details || []).join(" ; ");
         showToast(`Signalement refusé par le schéma d'observation : ${detail}`, "error");
+        releaseSubmit();
         return;
       }
       console.warn("API unreachable, keeping report locally (mock mode):", err.message);
@@ -1179,6 +1232,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? `Signalement enregistré (en attente de modération) et publié dans l'Open Data agricole. Alerte de proximité actualisée.`
       : `Signalement enregistré localement (mode hors ligne) : l'API n'est pas joignable.`, persisted ? "success" : "info");
     refreshLevelBadge();
+    releaseSubmit();
   });
 
   // 10. TOAST NOTIFICATION HELPER
