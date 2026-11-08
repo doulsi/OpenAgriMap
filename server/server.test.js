@@ -551,3 +551,25 @@ test("gamification P5: reputation endpoint returns the level (Graine -> Jardinie
   const rep = await (await fetch(`${base}/api/reporters/${encodeURIComponent("Nobody")}/reputation`)).json();
   assert.equal(rep.level.name, "Graine");
 });
+
+test("report status machine: documented transitions work, unknown statuses are rejected", async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openagrimap-"));
+  const store = new ReportStore(path.join(tmpDir, "reports.json"));
+  const { REPORT_STATUSES, REPORT_STATUS_TRANSITIONS } = require("./store");
+
+  const rec = store.add(VALID_OBSERVATION);
+  assert.equal(rec.status, "pending_moderation");
+
+  // every intended transition is currently accepted (setStatus stays permissive)
+  for (const [from, targets] of Object.entries(REPORT_STATUS_TRANSITIONS)) {
+    store.setStatus(rec.id, from);
+    for (const to of targets) {
+      const updated = store.setStatus(rec.id, to);
+      assert.equal(updated.status, to);
+    }
+  }
+
+  assert.throws(() => store.setStatus(rec.id, "bogus"), /invalid status/);
+  assert.equal(store.setStatus("rep-nope", "confirmed"), null);
+  assert.deepEqual(REPORT_STATUSES.slice().sort(), ["confirmed", "pending_moderation", "rejected"].sort());
+});

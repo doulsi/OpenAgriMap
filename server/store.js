@@ -10,6 +10,21 @@ const path = require("path");
 
 const DEFAULT_DATA_FILE = path.join(__dirname, "..", "data", "reports.json");
 
+// Moderation state machine for community reports.
+// Intended workflow:
+//   pending_moderation -> confirmed | rejected
+//   confirmed -> rejected
+//   rejected -> pending_moderation (re-open goes back through the moderation queue)
+// setStatus currently accepts any status -> any status (historical behavior);
+// REPORT_STATUS_TRANSITIONS documents the intended graph so a future tightening
+// has a single authoritative source.
+const REPORT_STATUSES = ["pending_moderation", "confirmed", "rejected"];
+const REPORT_STATUS_TRANSITIONS = {
+  pending_moderation: ["confirmed", "rejected"],
+  confirmed: ["rejected"],
+  rejected: ["pending_moderation"]
+};
+
 function seedParcels() {
   const seedFile = path.join(__dirname, "..", "js", "mock-parcels.js");
   const src = fs.readFileSync(seedFile, "utf8");
@@ -174,8 +189,7 @@ class ReportStore {
 
   /** P2 modération : change le statut d'un signalement (pending_moderation / confirmed / rejected). */
   setStatus(id, status) {
-    const allowed = ["pending_moderation", "confirmed", "rejected"];
-    if (!allowed.includes(status)) {
+    if (!REPORT_STATUSES.includes(status)) {
       const err = new Error(`invalid status "${status}"`);
       err.code = "BAD_STATUS";
       throw err;
@@ -221,4 +235,4 @@ function pointInPolygon(point, ring) {
   return inside;
 }
 
-module.exports = { ReportStore, seedReports, seedParcels, DEFAULT_DATA_FILE };
+module.exports = { ReportStore, seedReports, seedParcels, DEFAULT_DATA_FILE, REPORT_STATUSES, REPORT_STATUS_TRANSITIONS };
